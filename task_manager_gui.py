@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Linux Task Manager (Windows 11 Modern Desktop Style - High Performance Edition)
+Linux Task Manager (Windows 11 Modern Desktop Style - Non-Tech Friendly & High Performance)
 Phát triển bởi AIaC dành riêng cho anh Tân.
 Bản quyền & Quản trị: 360 CORP (support@360.org.vn)
 """
@@ -39,6 +39,104 @@ try:
 except ImportError:
     print("Yêu cầu thư viện PyQt5: sudo apt install -y python3-pyqt5")
     sys.exit(1)
+
+
+# --- TỪ ĐIỂN NHẬN DIỆN & MÔ TẢ TIẾN TRÌNH THÔNG MINH CHO NON-TECH ---
+KNOWN_PROCESS_INFO = {
+    # Ứng dụng phổ biến (🟢 Có thể tắt an toàn)
+    "chrome": ("Google Chrome", "Trình duyệt Web (Mở nhiều tab tốn RAM)", "safe"),
+    "google-chrome": ("Google Chrome", "Trình duyệt Web (Mở nhiều tab tốn RAM)", "safe"),
+    "chromium": ("Chromium", "Trình duyệt Web mã nguồn mở", "safe"),
+    "firefox": ("Mozilla Firefox", "Trình duyệt Web Firefox", "safe"),
+    "brave": ("Brave Browser", "Trình duyệt Web bảo mật", "safe"),
+    "code": ("VS Code", "Trình soạn thảo mã nguồn Visual Studio Code", "safe"),
+    "vscodium": ("VSCodium", "Trình soạn thảo lập trình", "safe"),
+    "cursor": ("Cursor AI Editor", "Trình soạn thảo AI Code Editor", "safe"),
+    "pycharm": ("PyCharm", "Môi trường lập trình Python IDE", "safe"),
+    "vuaoffice": ("VuaOffice", "Bộ ứng dụng văn phòng VuaOffice", "safe"),
+    "electron": ("Ứng dụng Electron", "Phần mềm chạy nền Node/Electron", "safe"),
+    "telegram-desktop": ("Telegram", "Ứng dụng nhắn tin Telegram", "safe"),
+    "slack": ("Slack", "Ứng dụng trao đổi công việc Slack", "safe"),
+    "discord": ("Discord", "Ứng dụng chat & voice Discord", "safe"),
+    "zalo": ("Zalo", "Ứng dụng nhắn tin Zalo", "safe"),
+    "skype": ("Skype", "Ứng dụng gọi điện Skype", "safe"),
+    "vlc": ("VLC Media Player", "Trình phát video & nhạc VLC", "safe"),
+    "spotify": ("Spotify", "Ứng dụng nghe nhạc Spotify", "safe"),
+    "rhythmbox": ("Rhythmbox", "Trình nghe nhạc mặc định", "safe"),
+    "nemo": ("Trình quản lý File (Nemo)", "Cửa sổ quản lý thư mục và tệp tin", "safe"),
+    "thunar": ("Trình quản lý File (Thunar)", "Cửa sổ quản lý thư mục", "safe"),
+    "nautilus": ("Trình quản lý File (GNOME)", "Cửa sổ quản lý thư mục", "safe"),
+    "xed": ("Trình soạn thảo Text (Xed)", "Phần mềm ghi chú text", "safe"),
+    "gnome-terminal": ("Terminal", "Cửa sổ dòng lệnh Terminal", "safe"),
+    "x-terminal-emulator": ("Terminal", "Cửa sổ dòng lệnh", "safe"),
+    "libreoffice": ("LibreOffice", "Bộ ứng dụng văn phòng (Word/Excel)", "safe"),
+    "soffice.bin": ("LibreOffice Core", "Bộ ứng dụng văn phòng", "safe"),
+    "gimp": ("GIMP", "Phần mềm chỉnh sửa ảnh GIMP", "safe"),
+    "inkscape": ("Inkscape", "Phần mềm vẽ vector Inkscape", "safe"),
+    "python3": ("Chương trình Python", "Script hoặc ứng dụng viết bằng Python", "safe"),
+    "python": ("Chương trình Python", "Script hoặc ứng dụng viết bằng Python", "safe"),
+    "node": ("Node.js Server", "Ứng dụng chạy JavaScript Backend", "safe"),
+    "java": ("Ứng dụng Java", "Phần mềm chạy trên máy ảo Java JVM", "safe"),
+
+    # Dịch vụ nền & Bộ gõ (🟡 Cân nhắc)
+    "ibus-daemon": ("Bộ gõ Tiếng Việt (IBus)", "Dịch vụ gõ tiếng Việt (Tắt sẽ không gõ được dấu)", "caution"),
+    "ibus-extension": ("IBus Tiện ích", "Dịch vụ hỗ trợ bộ gõ", "caution"),
+    "ibus-ui-gtk3": ("IBus Giao diện", "Khung hiển thị bộ gõ", "caution"),
+    "fcitx": ("Bộ gõ Fcitx", "Dịch vụ gõ bàn phím", "caution"),
+    "unikey": ("UniKey Linux", "Bộ gõ tiếng Việt Unikey", "caution"),
+    "pipewire": ("Dịch vụ Âm thanh (PipeWire)", "Quản lý loa và microphone (Tắt sẽ mất tiếng)", "caution"),
+    "pipewire-pulse": ("Dịch vụ Âm thanh", "Cầu nối âm thanh", "caution"),
+    "pulseaudio": ("Dịch vụ Âm thanh (PulseAudio)", "Quản lý âm thanh (Tắt sẽ mất tiếng)", "caution"),
+    "wireplumber": ("Quản lý Âm thanh", "Dịch vụ điều phối âm thanh", "caution"),
+    "bluetoothd": ("Dịch vụ Bluetooth", "Quản lý kết nối tai nghe/chuột Bluetooth", "caution"),
+    "blueman-applet": ("Khay Bluetooth", "Biểu tượng Bluetooth ở thanh Taskbar", "caution"),
+    "cupsd": ("Dịch vụ Máy in (CUPS)", "Quản lý kết nối và in ấn tài liệu", "caution"),
+    "cups-browsed": ("Dịch vụ Máy in Mạng", "Tìm kiếm máy in qua mạng LAN", "caution"),
+    "cinnamon-screensaver": ("Màn hình khóa Cinnamon", "Trình bảo vệ và khóa màn hình", "caution"),
+    "cinnamon-killer-daemon": ("Tiện ích Cinnamon", "Bộ giám sát màn hình Desktop", "caution"),
+    "ssh-agent": ("Bảo mật SSH Key", "Quản lý chìa khóa đăng nhập SSH", "caution"),
+    "gpg-agent": ("Bảo mật GPG", "Quản lý mật khẩu mã hóa", "caution"),
+    "flameshot": ("Chụp màn hình Flameshot", "Phần mềm chụp ảnh màn hình", "caution"),
+    "copyq": ("Lịch sử Clipboard CopyQ", "Lưu trữ lịch sử Copy/Paste", "caution"),
+
+    # Tiến trình Hệ thống cốt lõi (🔴 Cấm tắt)
+    "systemd": ("Nhân khởi động Linux (systemd)", "Tiến trình mẹ số 1 của hệ điều hành (CẤM TẮT)", "system"),
+    "systemd-journald": ("Nhật ký Hệ thống", "Lưu trữ log hoạt động của Linux (CẤM TẮT)", "system"),
+    "systemd-udevd": ("Quản lý Phần cứng", "Nhận diện cắm USB, chuột, bàn phím (CẤM TẮT)", "system"),
+    "systemd-logind": ("Quản lý Đăng nhập", "Quản lý phiên làm việc người dùng (CẤM TẮT)", "system"),
+    "systemd-resolved": ("Dịch vụ DNS", "Phân giải tên miền Internet (CẤM TẮT)", "system"),
+    "Xorg": ("Máy chủ Đồ Họa (Xorg)", "Môi trường hiển thị màn hình (Tắt sẽ bị sập màn hình)", "system"),
+    "cinnamon": ("Giao diện Màn hình (Cinnamon)", "Màn hình Desktop chính (Tắt sẽ mất giao diện)", "system"),
+    "muffin": ("Bộ quản lý Cửa sổ (Muffin)", "Điều khiển di chuyển/thu nhỏ cửa sổ (CẤM TẮT)", "system"),
+    "lightdm": ("Màn hình Đăng nhập (LightDM)", "Dịch vụ đăng nhập tài khoản (CẤM TẮT)", "system"),
+    "dbus-daemon": ("Cầu nối Hệ thống (D-Bus)", "Giao tiếp giữa các phần mềm Linux (CẤM TẮT)", "system"),
+    "polkitd": ("Quản lý Quyền Quản Trị", "Xác thực mật khẩu sudo/root (CẤM TẮT)", "system"),
+    "accounts-daemon": ("Quản lý Tài khoản", "Quản lý người dùng hệ điều hành (CẤM TẮT)", "system"),
+    "NetworkManager": ("Quản lý Mạng Internet", "Dịch vụ kết nối Wi-Fi & Mạng dây (CẤM TẮT)", "system"),
+    "wpa_supplicant": ("Dịch vụ Wi-Fi", "Bảo mật kết nối Wi-Fi (CẤM TẮT)", "system"),
+    "avahi-daemon": ("Dịch vụ Khám phá Mạng", "Kết nối thiết bị mạng LAN cục bộ", "system"),
+    "cron": ("Lịch trình Hệ thống (Cron)", "Chạy các tác vụ tự động hẹn giờ", "system"),
+    "rsyslogd": ("Ghi Log Hệ thống", "Lưu trữ sự kiện Linux", "system")
+}
+
+
+def classify_process(name, user, pid):
+    name_lower = name.lower()
+    
+    # 1. Tra cứu trực tiếp từ điển
+    if name_lower in KNOWN_PROCESS_INFO:
+        nice_name, desc, category = KNOWN_PROCESS_INFO[name_lower]
+        return nice_name, desc, category
+
+    # 2. Kiểm tra tiến trình hệ thống root / kernel
+    if user == "root" or pid <= 100 or name.startswith("kworker") or name.startswith("ksoftirqd") or name.startswith("rcu_"):
+        return name, "Dịch vụ cốt lõi của hệ thống Linux (CẤM TẮT)", "system"
+
+    # 3. Mặc định cho tiến trình người dùng
+    if user != "root":
+        return name, "Ứng dụng hoặc tiến trình chạy bởi người dùng", "safe"
+    
+    return name, "Dịch vụ chạy ngầm của hệ điều hành", "caution"
 
 
 # --- UTILS ĐỊNH DẠNG & THÔNG TIN HỆ THỐNG ---
@@ -105,7 +203,10 @@ def get_os_info():
 
 # --- HIGH PERFORMANCE PROCESS TABLE MODEL (VIRTUALIZED MODEL/VIEW) ---
 class ProcessTableModel(QAbstractTableModel):
-    HEADERS = ["Tên Tiến Trình", "PID", "Trạng Thái", "CPU %", "Bộ Nhớ RAM", "RAM %", "Người Dùng"]
+    HEADERS = [
+        "Tên Tiến Trình", "Mô Tả & Hướng Dẫn (Non-Tech)", "Khuyến Nghị",
+        "CPU %", "Bộ Nhớ RAM", "RAM %", "PID", "Người Dùng"
+    ]
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -133,11 +234,17 @@ class ProcessTableModel(QAbstractTableModel):
 
         if role == Qt.DisplayRole:
             if col == 0:
-                return p["name"]
+                return p["nice_name"]
             elif col == 1:
-                return p["pid"]
+                return p["desc"]
             elif col == 2:
-                return "Đang chạy" if p["status"] in ["running", "sleeping"] else p["status"]
+                cat = p["category"]
+                if cat == "safe":
+                    return "🟢 Có thể tắt"
+                elif cat == "caution":
+                    return "🟡 Cân nhắc"
+                else:
+                    return "🔴 Hệ thống (CẤM)"
             elif col == 3:
                 return f"{p['cpu_percent']:.1f}%"
             elif col == 4:
@@ -145,24 +252,34 @@ class ProcessTableModel(QAbstractTableModel):
             elif col == 5:
                 return f"{p['ram_percent']:.1f}%"
             elif col == 6:
+                return p["pid"]
+            elif col == 7:
                 return p["user"]
 
         elif role == Qt.TextAlignmentRole:
-            if col in [1, 2, 6]:
+            if col in [2, 6, 7]:
                 return Qt.AlignCenter
             elif col in [3, 4, 5]:
                 return Qt.AlignRight | Qt.AlignVCenter
             return Qt.AlignLeft | Qt.AlignVCenter
 
         elif role == Qt.BackgroundRole:
-            if col == 3:  # CPU %
+            if col == 2:  # Khuyến nghị
+                cat = p["category"]
+                if cat == "safe":
+                    return QColor("#dcfce7")  # Xanh lá nhạt
+                elif cat == "caution":
+                    return QColor("#fef3c7")  # Vàng nhạt
+                else:
+                    return QColor("#fee2e2")  # Đỏ nhạt
+            elif col == 3:  # CPU %
                 val = p["cpu_percent"]
                 if val > 50.0:
-                    return QColor("#fee2e2")  # Đỏ nhạt
+                    return QColor("#fee2e2")
                 elif val > 20.0:
-                    return QColor("#ffedd5")  # Cam nhạt
+                    return QColor("#ffedd5")
                 elif val > 5.0:
-                    return QColor("#fef9c3")  # Vàng nhạt
+                    return QColor("#fef9c3")
             elif col in [4, 5]:  # RAM %
                 val = p["ram_percent"]
                 if val > 30.0:
@@ -173,7 +290,15 @@ class ProcessTableModel(QAbstractTableModel):
                     return QColor("#fef9c3")
 
         elif role == Qt.ForegroundRole:
-            if col == 3:
+            if col == 2:
+                cat = p["category"]
+                if cat == "safe":
+                    return QColor("#166534")  # Xanh lá đậm
+                elif cat == "caution":
+                    return QColor("#92400e")  # Vàng đất
+                else:
+                    return QColor("#991b1b")  # Đỏ đậm
+            elif col == 3:
                 val = p["cpu_percent"]
                 if val > 50.0:
                     return QColor("#991b1b")
@@ -209,11 +334,11 @@ class ProcessTableModel(QAbstractTableModel):
         reverse = (self._sort_order == Qt.DescendingOrder)
         col = self._sort_col
         if col == 0:
-            self.processes.sort(key=lambda x: x["name"].lower(), reverse=reverse)
+            self.processes.sort(key=lambda x: x["nice_name"].lower(), reverse=reverse)
         elif col == 1:
-            self.processes.sort(key=lambda x: x["pid"], reverse=reverse)
+            self.processes.sort(key=lambda x: x["desc"].lower(), reverse=reverse)
         elif col == 2:
-            self.processes.sort(key=lambda x: x["status"], reverse=reverse)
+            self.processes.sort(key=lambda x: x["category"], reverse=reverse)
         elif col == 3:
             self.processes.sort(key=lambda x: x["cpu_percent"], reverse=reverse)
         elif col == 4:
@@ -221,12 +346,44 @@ class ProcessTableModel(QAbstractTableModel):
         elif col == 5:
             self.processes.sort(key=lambda x: x["ram_percent"], reverse=reverse)
         elif col == 6:
+            self.processes.sort(key=lambda x: x["pid"], reverse=reverse)
+        elif col == 7:
             self.processes.sort(key=lambda x: x["user"], reverse=reverse)
 
     def get_process(self, row):
         if 0 <= row < len(self.processes):
             return self.processes[row]
         return None
+
+
+# --- CUSTOM FILTER PROXY CHO PHÉP LỌC CATEGORY & SEARCH ---
+class ProcessFilterProxyModel(QSortFilterProxyModel):
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.category_filter = "all"  # all, safe, caution, system
+
+    def setCategoryFilter(self, cat):
+        self.category_filter = cat
+        self.invalidateFilter()
+
+    def filterAcceptsRow(self, source_row, source_parent):
+        source_model = self.sourceModel()
+        p = source_model.get_process(source_row)
+        if not p:
+            return False
+
+        # 1. Kiểm tra Category Filter
+        if self.category_filter != "all":
+            if p["category"] != self.category_filter:
+                return False
+
+        # 2. Kiểm tra Search Text
+        search_reg = self.filterRegExp()
+        if search_reg.isEmpty():
+            return True
+
+        text_to_search = f"{p['name']} {p['nice_name']} {p['desc']} {p['pid']} {p['user']}".lower()
+        return search_reg.indexIn(text_to_search) != -1
 
 
 # --- WIDGET VẼ BIỂU ĐỒ SÓNG HIỆU NĂNG THỜI GIAN THỰC (REAL-TIME GRAPH) ---
@@ -328,13 +485,12 @@ class SystemMonitorThread(QThread):
         self.last_net = psutil.net_io_counters()
         self.last_disk = psutil.disk_io_counters()
         self.last_time = time.time()
-        self.user_cache = {}  # Cache username để tránh syscall I/O chậm
+        self.user_cache = {}
 
     def set_interval(self, sec):
         self.interval = max(sec, 0.2)
 
     def run(self):
-        # Khởi tạo psutil cpu_percent để tính toán chính xác
         psutil.cpu_percent(interval=None)
         
         while self.running:
@@ -390,14 +546,14 @@ class SystemMonitorThread(QThread):
                 }
                 self.stats_updated.emit(stats)
 
-                # 5. Quét danh sách tiến trình (Tối ưu chỉ đọc các trường cần thiết)
+                # 5. Quét danh sách tiến trình & Phân loại Non-tech
                 proc_list = []
                 for p in psutil.process_iter(['pid', 'name', 'status', 'cpu_percent', 'memory_info', 'memory_percent']):
                     try:
                         p_info = p.info
                         pid = p_info['pid']
+                        name = p_info.get("name") or "Unknown"
                         
-                        # Cache username theo PID
                         user = self.user_cache.get(pid)
                         if not user:
                             try:
@@ -407,12 +563,17 @@ class SystemMonitorThread(QThread):
                                 user = "user"
                                 self.user_cache[pid] = user
 
+                        nice_name, desc, category = classify_process(name, user, pid)
+
                         mem_info = p_info.get('memory_info')
                         rss_mb = (mem_info.rss / (1024 * 1024)) if mem_info else 0.0
                         
                         proc_list.append({
                             "pid": pid,
-                            "name": p_info.get("name") or "Unknown",
+                            "name": name,
+                            "nice_name": nice_name,
+                            "desc": desc,
+                            "category": category,
                             "status": p_info.get("status") or "sleeping",
                             "cpu_percent": p_info.get("cpu_percent") or 0.0,
                             "ram_mb": rss_mb,
@@ -422,7 +583,6 @@ class SystemMonitorThread(QThread):
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
 
-                # Dọn cache nếu số lượng quá lớn
                 if len(self.user_cache) > 2000:
                     current_pids = {p["pid"] for p in proc_list}
                     self.user_cache = {pid: u for pid, u in self.user_cache.items() if pid in current_pids}
@@ -443,10 +603,10 @@ class LinuxTaskManager(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Trình Quản Lý Tác Vụ Linux (Task Manager)")
-        self.setMinimumSize(1120, 800)
+        self.setMinimumSize(1160, 820)
         self.selected_pid = None
-        self.selected_proc_name = ""
-        self.selected_perf_tab = 0  # 0: CPU, 1: RAM, 2: Disk, 3: Network, 4: GPU
+        self.selected_proc = None
+        self.selected_perf_tab = 0
         self.is_always_on_top = False
 
         self.init_ui()
@@ -552,7 +712,7 @@ class LinuxTaskManager(QMainWindow):
 
         title_box = QVBoxLayout()
         title_box.setSpacing(1)
-        lbl_app_name = QLabel("Trình Quản Lý Tác Vụ Linux (Task Manager)", self)
+        lbl_app_name = QLabel("Trình Quản Lý Tác Vụ Linux (Task Manager) • Phím tắt: Ctrl+Shift+Esc", self)
         lbl_app_name.setFont(QFont("DejaVu Sans", 12, QFont.Bold))
         lbl_app_name.setStyleSheet("color: #1e293b; border: none;")
         
@@ -602,7 +762,7 @@ class LinuxTaskManager(QMainWindow):
         self.init_system_info_tab()
 
     # ----------------------------------------------------
-    # TAB 1: PROCESSES (VIRTUALIZED MODEL/VIEW - SIÊU MƯỢT)
+    # TAB 1: PROCESSES (VIRTUALIZED MODEL/VIEW & NON-TECH)
     # ----------------------------------------------------
     def init_processes_tab(self):
         tab = QWidget()
@@ -610,18 +770,51 @@ class LinuxTaskManager(QMainWindow):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        # Toolbar: Tìm kiếm & Đếm tiến trình
+        # Thanh hướng dẫn Non-Tech thông minh
+        help_bar = QFrame(self)
+        help_bar.setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 10px;")
+        help_layout = QHBoxLayout(help_bar)
+        help_layout.setContentsMargins(4, 2, 4, 2)
+        help_lbl = QLabel(
+            "💡 <b>Hướng dẫn cho người dùng:</b> "
+            "🟢 <b>Có thể tắt</b>: Ứng dụng của bạn (tắt an toàn khi máy lag) • "
+            "🟡 <b>Cân nhắc</b>: Dịch vụ chạy ngầm (bộ gõ tiếng Việt, loa...) • "
+            "🔴 <b>Hệ thống</b>: Cốt lõi của Linux (CẤM TẮT để tránh đơ máy).",
+            self
+        )
+        help_lbl.setFont(QFont("DejaVu Sans", 9))
+        help_lbl.setStyleSheet("color: #1e40af; border: none;")
+        help_layout.addWidget(help_lbl)
+        layout.addWidget(help_bar)
+
+        # Toolbar: Lọc Phân Loại & Tìm Kiếm
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
 
+        # ComboBox Bộ lọc phân loại
+        lbl_filter = QLabel("Xem danh mục:", self)
+        lbl_filter.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
+        lbl_filter.setStyleSheet("color: #475569;")
+        
+        self.combo_category = QComboBox(self)
+        self.combo_category.addItems([
+            "📋 Tất cả tiến trình",
+            "🟢 Ứng dụng người dùng (Nên tắt khi lag)",
+            "🟡 Dịch vụ chạy ngầm (Cân nhắc)",
+            "🔴 Tiến trình Hệ Thống (Cấm tắt)"
+        ])
+        self.combo_category.currentIndexChanged.connect(self.on_category_filter_changed)
+
         self.proc_search = QLineEdit(self)
-        self.proc_search.setPlaceholderText("🔍 Tìm kiếm tiến trình theo tên hoặc PID...")
+        self.proc_search.setPlaceholderText("🔍 Tìm kiếm theo tên ứng dụng, chức năng hoặc PID...")
         self.proc_search.textChanged.connect(self.on_search_changed)
 
         self.lbl_proc_count = QLabel("Tổng: 0 tiến trình", self)
         self.lbl_proc_count.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
         self.lbl_proc_count.setStyleSheet("color: #64748b;")
 
+        toolbar.addWidget(lbl_filter)
+        toolbar.addWidget(self.combo_category)
         toolbar.addWidget(self.proc_search, stretch=3)
         toolbar.addWidget(self.lbl_proc_count, stretch=1)
         layout.addLayout(toolbar)
@@ -629,16 +822,13 @@ class LinuxTaskManager(QMainWindow):
         # Bảng Process sử dụng QTableView + ProcessTableModel (Không giật lag)
         self.proc_model = ProcessTableModel(self)
         
-        # Proxy model để tìm kiếm nhanh
-        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model = ProcessFilterProxyModel(self)
         self.proxy_model.setSourceModel(self.proc_model)
-        self.proxy_model.setFilterKeyColumn(-1)  # Tìm trên tất cả các cột
-        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
 
         self.proc_view = QTableView(self)
         self.proc_view.setModel(self.proxy_model)
         self.proc_view.verticalHeader().setVisible(False)
-        self.proc_view.verticalHeader().setDefaultSectionSize(34)
+        self.proc_view.verticalHeader().setDefaultSectionSize(36)
         self.proc_view.setSortingEnabled(True)
         self.proc_view.sortByColumn(3, Qt.DescendingOrder)  # Mặc định CPU % cao nhất lên đầu
         self.proc_view.setSelectionBehavior(QTableView.SelectRows)
@@ -651,12 +841,15 @@ class LinuxTaskManager(QMainWindow):
         h_header = self.proc_view.horizontalHeader()
         h_header.setSectionResizeMode(QHeaderView.Stretch)
         h_header.setSectionResizeMode(0, QHeaderView.Interactive)
-        h_header.resizeSection(0, 260)
-        h_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        h_header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        h_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        h_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        h_header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+        h_header.resizeSection(0, 180)  # Tên
+        h_header.setSectionResizeMode(1, QHeaderView.Interactive)
+        h_header.resizeSection(1, 280)  # Mô tả Non-Tech
+        h_header.setSectionResizeMode(2, QHeaderView.ResizeToContents)  # Khuyến nghị
+        h_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)  # CPU %
+        h_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)  # RAM MB
+        h_header.setSectionResizeMode(5, QHeaderView.ResizeToContents)  # RAM %
+        h_header.setSectionResizeMode(6, QHeaderView.ResizeToContents)  # PID
+        h_header.setSectionResizeMode(7, QHeaderView.ResizeToContents)  # User
 
         layout.addWidget(self.proc_view)
 
@@ -689,10 +882,15 @@ class LinuxTaskManager(QMainWindow):
 
         self.tabs.addTab(tab, "📋 Tiến trình")
 
+    def on_category_filter_changed(self, idx):
+        cat_map = {0: "all", 1: "safe", 2: "caution", 3: "system"}
+        self.proxy_model.setCategoryFilter(cat_map.get(idx, "all"))
+        self.lbl_proc_count.setText(f"Tổng: {self.proxy_model.rowCount()} tiến trình")
+
     def on_search_changed(self, text):
         reg = QRegExp(text, Qt.CaseInsensitive, QRegExp.FixedString)
         self.proxy_model.setFilterRegExp(reg)
-        self.lbl_proc_count.setText(f"Tổng: {self.proxy_model.rowCount()} tiến trình (Đang lọc)")
+        self.lbl_proc_count.setText(f"Tổng: {self.proxy_model.rowCount()} tiến trình")
 
     # ----------------------------------------------------
     # TAB 2: PERFORMANCE (BIỂU ĐỒ HIỆU NĂNG THỜI GIAN THỰC)
@@ -1015,7 +1213,6 @@ class LinuxTaskManager(QMainWindow):
         self.show()
 
     def on_stats_updated(self, s):
-        # 1. Update Header Summary Banner
         cpu_p = s["cpu_percent"]
         ram_p = s["ram_percent"]
         ram_used_gb = s["ram_used"] / (1024**3)
@@ -1024,7 +1221,6 @@ class LinuxTaskManager(QMainWindow):
             f"CPU: {cpu_p:.1f}% ({s['cpu_freq_ghz']:.2f} GHz) • RAM: {ram_used_gb:.1f}/{ram_tot_gb:.1f} GB ({ram_p:.0f}%) • Uptime: {s['uptime']}"
         )
 
-        # 2. Update Mini Cards
         self.perf_buttons[0].lbl_v.setText(f"{cpu_p:.1f}%")
         self.perf_buttons[0].lbl_s.setText(f"{s['cpu_freq_ghz']:.2f} GHz • {s['cpu_cores_logical']} Luồng")
         
@@ -1039,7 +1235,6 @@ class LinuxTaskManager(QMainWindow):
         self.perf_buttons[3].lbl_v.setText(f"{tot_net_speed:.1f} KB/s")
         self.perf_buttons[3].lbl_s.setText(f"Tải: {format_bytes(s['net_down_speed'])}/s")
 
-        # 3. Update Real-time Graph & Details theo Tab được chọn
         if self.selected_perf_tab == 0:  # CPU
             self.realtime_graph.set_max_val(100.0)
             self.realtime_graph.unit = "%"
@@ -1119,17 +1314,11 @@ class LinuxTaskManager(QMainWindow):
             self.detail_labels[f"title_{i}"].setText(f"• {k}:")
             self.detail_labels[f"val_{i}"].setText(v)
 
-    # --- CẬP NHẬT BẢNG TIẾN TRÌNH (ZERO-LAG VIRTUALIZED) ---
+    # --- CẬP NHẬT BẢNG TIẾN TRÌNH ---
     def on_processes_updated(self, proc_list):
-        # Cập nhật dữ liệu vào Model ảo hóa
         self.proc_model.update_data(proc_list)
-        
-        # Cập nhật số lượng
         count = self.proxy_model.rowCount()
-        if self.proc_search.text().strip():
-            self.lbl_proc_count.setText(f"Tổng: {count} tiến trình (Đang lọc)")
-        else:
-            self.lbl_proc_count.setText(f"Tổng: {count} tiến trình (Đang chạy)")
+        self.lbl_proc_count.setText(f"Tổng: {count} tiến trình")
 
     def on_process_selected(self):
         indexes = self.proc_view.selectionModel().selectedRows()
@@ -1139,14 +1328,23 @@ class LinuxTaskManager(QMainWindow):
             p = self.proc_model.get_process(source_idx.row())
             if p:
                 self.selected_pid = p["pid"]
-                self.selected_proc_name = p["name"]
-                self.lbl_selected_proc.setText(f"Đã chọn: <b>{p['name']}</b> (PID: {p['pid']})")
+                self.selected_proc = p
+                
+                cat_badge = ""
+                if p["category"] == "safe":
+                    cat_badge = "<span style='color: #16a34a;'><b>[🟢 An toàn để tắt]</b></span>"
+                elif p["category"] == "caution":
+                    cat_badge = "<span style='color: #d97706;'><b>[🟡 Cân nhắc]</b></span>"
+                else:
+                    cat_badge = "<span style='color: #dc2626;'><b>[🔴 Tiến trình Hệ Thống]</b></span>"
+                
+                self.lbl_selected_proc.setText(f"Đã chọn: <b>{p['nice_name']}</b> (PID: {p['pid']}) — {p['desc']} {cat_badge}")
                 self.lbl_selected_proc.setStyleSheet("color: #1e293b;")
                 self.btn_end_task.setEnabled(True)
                 return
 
         self.selected_pid = None
-        self.selected_proc_name = ""
+        self.selected_proc = None
         self.lbl_selected_proc.setText("Chưa chọn tiến trình nào")
         self.lbl_selected_proc.setStyleSheet("color: #64748b; font-style: italic;")
         self.btn_end_task.setEnabled(False)
@@ -1162,7 +1360,7 @@ class LinuxTaskManager(QMainWindow):
             return
 
         pid = p["pid"]
-        name = p["name"]
+        name = p["nice_name"]
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -1172,16 +1370,16 @@ class LinuxTaskManager(QMainWindow):
         """)
 
         act_end = QAction(f"🛑  Kết thúc tác vụ: {name}", self)
-        act_end.triggered.connect(lambda: self.kill_process(pid, name, force=False))
+        act_end.triggered.connect(lambda: self.kill_process(p, force=False))
 
-        act_force = QAction(f"⚡  Buộc dừng ngay (Force Kill)", self)
-        act_force.triggered.connect(lambda: self.kill_process(pid, name, force=True))
+        act_force = QAction("⚡  Buộc dừng ngay (Force Kill)", self)
+        act_force.triggered.connect(lambda: self.kill_process(p, force=True))
 
         act_open_dir = QAction("📂  Mở thư mục chứa file (Open Location)", self)
         act_open_dir.triggered.connect(lambda: self.open_proc_location(pid))
 
         act_search = QAction("🔍  Tìm kiếm thông tin tiến trình trên Web", self)
-        act_search.triggered.connect(lambda: webbrowser.open(f"https://www.google.com/search?q=linux+process+{name}"))
+        act_search.triggered.connect(lambda: webbrowser.open(f"https://www.google.com/search?q=linux+process+{p['name']}"))
 
         menu.addAction(act_end)
         menu.addAction(act_force)
@@ -1191,40 +1389,71 @@ class LinuxTaskManager(QMainWindow):
         menu.exec_(QCursor.pos())
 
     def confirm_end_task(self):
-        if self.selected_pid:
-            name = self.selected_proc_name or "Tiến trình"
-            reply = QMessageBox.question(
-                self, "Xác nhận kết thúc tác vụ",
-                f"Anh Tân có chắc chắn muốn kết thúc tiến trình '{name}' (PID: {self.selected_pid}) không?\n\n"
-                "Nếu tiến trình có dữ liệu chưa lưu, việc đóng đột ngột có thể làm mất dữ liệu đó.",
+        if not self.selected_proc:
+            return
+
+        p = self.selected_proc
+        name = p["nice_name"]
+        cat = p["category"]
+        pid = p["pid"]
+
+        # Cảnh báo thông minh theo từng cấp độ
+        if cat == "system":
+            reply = QMessageBox.critical(
+                self, "⚠️ CẢNH BÁO NGUY HIỂM — TIẾN TRÌNH HỆ THỐNG",
+                f"🚨 <b>'{name}' (PID: {pid})</b> là tiến trình cốt lõi của hệ điều hành Linux!\n\n"
+                f"• Chức năng: {p['desc']}\n"
+                "• Nguy cơ: Việc tắt tiến trình này có thể khiến màn hình bị sập hoặc máy tính tự khởi động lại.\n\n"
+                "Anh Tân có THỰC SỰ CHẮC CHẮN muốn ép buộc tắt tiến trình này không?",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No
             )
-            if reply == QMessageBox.Yes:
-                self.kill_process(self.selected_pid, name, force=False)
+        elif cat == "caution":
+            reply = QMessageBox.warning(
+                self, "🟡 CÂN NHẮC TRƯỚC KHI TẮT",
+                f"<b>'{name}' (PID: {pid})</b> là dịch vụ chạy ngầm hỗ trợ hệ thống.\n\n"
+                f"• Chức năng: {p['desc']}\n"
+                "• Lưu ý: Nếu tắt, một số tính năng (như gõ tiếng Việt, âm thanh, bluetooth...) có thể tạm thời không dùng được cho đến khi mở lại.\n\n"
+                "Anh Tân có muốn tiếp tục tắt không?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.No
+            )
+        else:
+            reply = QMessageBox.question(
+                self, "🟢 XÁC NHẬN TẮT ỨNG DỤNG",
+                f"✅ <b>'{name}' (PID: {pid})</b> là ứng dụng người dùng thông thường.\n\n"
+                f"• Chức năng: {p['desc']}\n"
+                f"• Tài nguyên giải phóng: ~{p['ram_mb']:.1f} MB RAM và {p['cpu_percent']:.1f}% CPU.\n\n"
+                "Anh Tân có muốn đóng ứng dụng này ngay không?",
+                QMessageBox.Yes | QMessageBox.No, QMessageBox.Yes
+            )
 
-    def kill_process(self, pid, name, force=False):
+        if reply == QMessageBox.Yes:
+            self.kill_process(p, force=False)
+
+    def kill_process(self, p_dict, force=False):
+        pid = p_dict["pid"]
+        name = p_dict["nice_name"]
         try:
             p = psutil.Process(pid)
             if force:
-                p.kill()  # SIGKILL
+                p.kill()
             else:
-                p.terminate()  # SIGTERM
+                p.terminate()
             
-            QMessageBox.information(self, "Thành công", f"Đã gửi lệnh kết thúc tiến trình '{name}' (PID: {pid}) thành công!")
+            QMessageBox.information(self, "Thành công", f"Đã kết thúc thành công ứng dụng '{name}' (PID: {pid})!\nMáy đã được giải phóng RAM & CPU.")
         except psutil.NoSuchProcess:
-            QMessageBox.information(self, "Thông báo", f"Tiến trình '{name}' (PID: {pid}) đã tự đóng trước đó.")
+            QMessageBox.information(self, "Thông báo", f"Ứng dụng '{name}' (PID: {pid}) đã tự đóng trước đó.")
         except psutil.AccessDenied:
             cmd = ["pkexec", "kill", "-9" if force else "-15", str(pid)]
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True)
                 if proc.returncode == 0:
-                    QMessageBox.information(self, "Thành công", f"Đã kết thúc tiến trình '{name}' (PID: {pid}) với quyền quản trị!")
+                    QMessageBox.information(self, "Thành công", f"Đã kết thúc '{name}' (PID: {pid}) với quyền quản trị root!")
                 else:
-                    QMessageBox.critical(self, "Lỗi quyền hạn", f"Không thể kết thúc tiến trình (Yêu cầu quyền root):\n{proc.stderr}")
+                    QMessageBox.critical(self, "Lỗi quyền hạn", f"Không thể kết thúc tiến trình:\n{proc.stderr}")
             except Exception as e:
-                QMessageBox.critical(self, "Lỗi", f"Không thể thực thi lệnh kill: {str(e)}")
+                QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
         except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Lỗi xảy ra khi đóng tiến trình: {str(e)}")
+            QMessageBox.critical(self, "Lỗi", f"Lỗi xảy ra: {str(e)}")
 
     def open_proc_location(self, pid):
         try:
