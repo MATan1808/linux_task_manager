@@ -573,7 +573,7 @@ class LinuxTaskManager(QMainWindow):
             b_layout.setSpacing(2)
             
             lbl_t = QLabel(title, btn)
-            lbl_t.setFont(QFont("DejaVu Sans", 9.5, QFont.Bold))
+            lbl_t.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
             lbl_t.setStyleSheet(f"color: {color}; background: transparent; border: none;")
             
             lbl_v = QLabel(val, btn)
@@ -637,7 +637,7 @@ class LinuxTaskManager(QMainWindow):
             row = i // 3
             col = i % 3
             lbl_title = QLabel(f, self)
-            lbl_title.setFont(QFont("DejaVu Sans", 8.5))
+            lbl_title.setFont(QFont("DejaVu Sans", 9))
             lbl_title.setStyleSheet("color: #64748b; border: none;")
             
             lbl_val = QLabel("Đang đọc...", self)
@@ -683,7 +683,7 @@ class LinuxTaskManager(QMainWindow):
         layout.addWidget(self.startup_table)
 
         btn_reload = QPushButton("🔄 Quét lại ứng dụng khởi động", self)
-        btn_reload.setFont(QFont("DejaVu Sans", 9.5, QFont.Bold))
+        btn_reload.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
         btn_reload.setStyleSheet("background-color: #3b82f6; color: white; border-radius: 6px; padding: 8px 16px; border: none;")
         btn_reload.clicked.connect(self.load_startup_apps)
         layout.addWidget(btn_reload, 0, Qt.AlignLeft)
@@ -819,11 +819,11 @@ class LinuxTaskManager(QMainWindow):
         grid.setSpacing(8)
         for row, (k, v) in enumerate(items):
             k_lbl = QLabel(f"• {k}:", card)
-            k_lbl.setFont(QFont("DejaVu Sans", 9.5))
+            k_lbl.setFont(QFont("DejaVu Sans", 10))
             k_lbl.setStyleSheet("color: #64748b; border: none;")
             
             v_lbl = QLabel(v, card)
-            v_lbl.setFont(QFont("DejaVu Sans", 9.5, QFont.Bold))
+            v_lbl.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
             v_lbl.setStyleSheet("color: #1e293b; border: none;")
             
             grid.addWidget(k_lbl, row, 0)
