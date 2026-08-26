@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Linux Task Manager (Windows 11 Modern Desktop Style)
+Linux Task Manager (Windows 11 Modern Desktop Style - High Performance Edition)
 Phát triển bởi AIaC dành riêng cho anh Tân.
 Bản quyền & Quản trị: 360 CORP (support@360.org.vn)
 """
@@ -25,13 +25,16 @@ except ImportError:
 try:
     from PyQt5.QtWidgets import (
         QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-        QPushButton, QTableWidget, QTableWidgetItem, QHeaderView, QLineEdit,
-        QTabWidget, QSplitter, QFrame, QMenu, QAction, QMessageBox, QComboBox,
-        QScrollArea, QGridLayout, QProgressBar
+        QPushButton, QTableView, QHeaderView, QLineEdit,
+        QTabWidget, QFrame, QMenu, QAction, QMessageBox, QComboBox,
+        QScrollArea, QGridLayout, QTableWidget, QTableWidgetItem
     )
-    from PyQt5.QtCore import Qt, QTimer, QThread, pyqtSignal, QPointF
+    from PyQt5.QtCore import (
+        Qt, QThread, pyqtSignal, QPointF, QAbstractTableModel, QModelIndex,
+        QSortFilterProxyModel, QRegExp
+    )
     from PyQt5.QtGui import (
-        QFont, QColor, QPainter, QPen, QBrush, QLinearGradient, QCursor, QIcon
+        QFont, QColor, QPainter, QPen, QBrush, QLinearGradient, QCursor
     )
 except ImportError:
     print("Yêu cầu thư viện PyQt5: sudo apt install -y python3-pyqt5")
@@ -98,6 +101,132 @@ def get_os_info():
     except Exception:
         pass
     return "Linux OS"
+
+
+# --- HIGH PERFORMANCE PROCESS TABLE MODEL (VIRTUALIZED MODEL/VIEW) ---
+class ProcessTableModel(QAbstractTableModel):
+    HEADERS = ["Tên Tiến Trình", "PID", "Trạng Thái", "CPU %", "Bộ Nhớ RAM", "RAM %", "Người Dùng"]
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.processes = []
+        self._sort_col = 3  # Mặc định sort CPU %
+        self._sort_order = Qt.DescendingOrder
+
+    def rowCount(self, parent=QModelIndex()):
+        return len(self.processes)
+
+    def columnCount(self, parent=QModelIndex()):
+        return len(self.HEADERS)
+
+    def headerData(self, section, orientation, role=Qt.DisplayRole):
+        if orientation == Qt.Horizontal and role == Qt.DisplayRole:
+            return self.HEADERS[section]
+        return None
+
+    def data(self, index, role=Qt.DisplayRole):
+        if not index.isValid() or index.row() >= len(self.processes):
+            return None
+
+        p = self.processes[index.row()]
+        col = index.column()
+
+        if role == Qt.DisplayRole:
+            if col == 0:
+                return p["name"]
+            elif col == 1:
+                return p["pid"]
+            elif col == 2:
+                return "Đang chạy" if p["status"] in ["running", "sleeping"] else p["status"]
+            elif col == 3:
+                return f"{p['cpu_percent']:.1f}%"
+            elif col == 4:
+                return f"{p['ram_mb']:.1f} MB"
+            elif col == 5:
+                return f"{p['ram_percent']:.1f}%"
+            elif col == 6:
+                return p["user"]
+
+        elif role == Qt.TextAlignmentRole:
+            if col in [1, 2, 6]:
+                return Qt.AlignCenter
+            elif col in [3, 4, 5]:
+                return Qt.AlignRight | Qt.AlignVCenter
+            return Qt.AlignLeft | Qt.AlignVCenter
+
+        elif role == Qt.BackgroundRole:
+            if col == 3:  # CPU %
+                val = p["cpu_percent"]
+                if val > 50.0:
+                    return QColor("#fee2e2")  # Đỏ nhạt
+                elif val > 20.0:
+                    return QColor("#ffedd5")  # Cam nhạt
+                elif val > 5.0:
+                    return QColor("#fef9c3")  # Vàng nhạt
+            elif col in [4, 5]:  # RAM %
+                val = p["ram_percent"]
+                if val > 30.0:
+                    return QColor("#fee2e2")
+                elif val > 10.0:
+                    return QColor("#ffedd5")
+                elif val > 3.0:
+                    return QColor("#fef9c3")
+
+        elif role == Qt.ForegroundRole:
+            if col == 3:
+                val = p["cpu_percent"]
+                if val > 50.0:
+                    return QColor("#991b1b")
+                elif val > 20.0:
+                    return QColor("#9a3412")
+                elif val > 5.0:
+                    return QColor("#854d0e")
+            elif col in [4, 5]:
+                val = p["ram_percent"]
+                if val > 30.0:
+                    return QColor("#991b1b")
+                elif val > 10.0:
+                    return QColor("#9a3412")
+                elif val > 3.0:
+                    return QColor("#854d0e")
+
+        return None
+
+    def update_data(self, new_proc_list):
+        self.beginResetModel()
+        self.processes = new_proc_list
+        self._apply_sort()
+        self.endResetModel()
+
+    def sort(self, column, order=Qt.AscendingOrder):
+        self._sort_col = column
+        self._sort_order = order
+        self.beginResetModel()
+        self._apply_sort()
+        self.endResetModel()
+
+    def _apply_sort(self):
+        reverse = (self._sort_order == Qt.DescendingOrder)
+        col = self._sort_col
+        if col == 0:
+            self.processes.sort(key=lambda x: x["name"].lower(), reverse=reverse)
+        elif col == 1:
+            self.processes.sort(key=lambda x: x["pid"], reverse=reverse)
+        elif col == 2:
+            self.processes.sort(key=lambda x: x["status"], reverse=reverse)
+        elif col == 3:
+            self.processes.sort(key=lambda x: x["cpu_percent"], reverse=reverse)
+        elif col == 4:
+            self.processes.sort(key=lambda x: x["ram_mb"], reverse=reverse)
+        elif col == 5:
+            self.processes.sort(key=lambda x: x["ram_percent"], reverse=reverse)
+        elif col == 6:
+            self.processes.sort(key=lambda x: x["user"], reverse=reverse)
+
+    def get_process(self, row):
+        if 0 <= row < len(self.processes):
+            return self.processes[row]
+        return None
 
 
 # --- WIDGET VẼ BIỂU ĐỒ SÓNG HIỆU NĂNG THỜI GIAN THỰC (REAL-TIME GRAPH) ---
@@ -181,13 +310,13 @@ class RealTimeGraphWidget(QWidget):
         # 6. Hiển thị thông số góc
         painter.setPen(QColor("#94a3b8"))
         painter.setFont(QFont("DejaVu Sans", 8))
-        painter.drawText(8, 16, f"60 giây trước")
+        painter.drawText(8, 16, "60 giây trước")
         painter.drawText(w - 75, 16, f"Hiện tại: {self.current_val:.1f}{self.unit}")
         painter.drawText(w - 55, h - 6, f"0{self.unit}")
         painter.drawText(w - 65, 30, f"{self.max_val:.0f}{self.unit}")
 
 
-# --- LUỒNG QUÉT TIẾN TRÌNH & HỆ THỐNG DƯỚI NỀN (WORKER THREAD) ---
+# --- LUỒNG QUÉT TIẾN TRÌNH & HỆ THỐNG DƯỚI NỀN (TỐI ƯU CAO CẤP) ---
 class SystemMonitorThread(QThread):
     stats_updated = pyqtSignal(dict)
     processes_updated = pyqtSignal(list)
@@ -199,11 +328,15 @@ class SystemMonitorThread(QThread):
         self.last_net = psutil.net_io_counters()
         self.last_disk = psutil.disk_io_counters()
         self.last_time = time.time()
+        self.user_cache = {}  # Cache username để tránh syscall I/O chậm
 
     def set_interval(self, sec):
         self.interval = max(sec, 0.2)
 
     def run(self):
+        # Khởi tạo psutil cpu_percent để tính toán chính xác
+        psutil.cpu_percent(interval=None)
+        
         while self.running:
             try:
                 curr_time = time.time()
@@ -218,7 +351,7 @@ class SystemMonitorThread(QThread):
                 mem = psutil.virtual_memory()
                 swap = psutil.swap_memory()
 
-                # 3. Disk I/O & Usage
+                # 3. Disk I/O
                 curr_disk = psutil.disk_io_counters()
                 disk_read_speed = 0.0
                 disk_write_speed = 0.0
@@ -257,30 +390,46 @@ class SystemMonitorThread(QThread):
                 }
                 self.stats_updated.emit(stats)
 
-                # 5. Quét danh sách tiến trình (Processes)
+                # 5. Quét danh sách tiến trình (Tối ưu chỉ đọc các trường cần thiết)
                 proc_list = []
-                for p in psutil.process_iter(['pid', 'name', 'status', 'cpu_percent', 'memory_info', 'memory_percent', 'username', 'exe']):
+                for p in psutil.process_iter(['pid', 'name', 'status', 'cpu_percent', 'memory_info', 'memory_percent']):
                     try:
                         p_info = p.info
+                        pid = p_info['pid']
+                        
+                        # Cache username theo PID
+                        user = self.user_cache.get(pid)
+                        if not user:
+                            try:
+                                user = p.username()
+                                self.user_cache[pid] = user
+                            except Exception:
+                                user = "user"
+                                self.user_cache[pid] = user
+
                         mem_info = p_info.get('memory_info')
                         rss_mb = (mem_info.rss / (1024 * 1024)) if mem_info else 0.0
                         
                         proc_list.append({
-                            "pid": p_info.get("pid"),
+                            "pid": pid,
                             "name": p_info.get("name") or "Unknown",
                             "status": p_info.get("status") or "sleeping",
                             "cpu_percent": p_info.get("cpu_percent") or 0.0,
                             "ram_mb": rss_mb,
                             "ram_percent": p_info.get("memory_percent") or 0.0,
-                            "user": p_info.get("username") or "system",
-                            "exe": p_info.get("exe") or ""
+                            "user": user
                         })
                     except (psutil.NoSuchProcess, psutil.AccessDenied):
                         continue
 
+                # Dọn cache nếu số lượng quá lớn
+                if len(self.user_cache) > 2000:
+                    current_pids = {p["pid"] for p in proc_list}
+                    self.user_cache = {pid: u for pid, u in self.user_cache.items() if pid in current_pids}
+
                 self.processes_updated.emit(proc_list)
 
-            except Exception as e:
+            except Exception:
                 pass
 
             time.sleep(self.interval)
@@ -295,9 +444,9 @@ class LinuxTaskManager(QMainWindow):
         super().__init__()
         self.setWindowTitle("Trình Quản Lý Tác Vụ Linux (Task Manager)")
         self.setMinimumSize(1120, 800)
-        self.processes_data = []
         self.selected_pid = None
-        self.selected_perf_tab = 0 # 0: CPU, 1: RAM, 2: Disk, 3: Network, 4: GPU
+        self.selected_proc_name = ""
+        self.selected_perf_tab = 0  # 0: CPU, 1: RAM, 2: Disk, 3: Network, 4: GPU
         self.is_always_on_top = False
 
         self.init_ui()
@@ -365,8 +514,8 @@ class LinuxTaskManager(QMainWindow):
                 selection-color: #ffffff;
             }
 
-            /* TABLE WIDGET */
-            QTableWidget {
+            /* TABLE VIEW (VIRTUALIZED) */
+            QTableView {
                 background-color: #ffffff;
                 color: #1e293b;
                 border: 1px solid #e2e8f0;
@@ -374,9 +523,6 @@ class LinuxTaskManager(QMainWindow):
                 gridline-color: #f1f5f9;
                 selection-background-color: #dbeafe;
                 selection-color: #1e3a8a;
-            }
-            QTableWidget::item {
-                padding: 6px 8px;
             }
             QHeaderView::section {
                 background-color: #1e293b;
@@ -456,7 +602,7 @@ class LinuxTaskManager(QMainWindow):
         self.init_system_info_tab()
 
     # ----------------------------------------------------
-    # TAB 1: PROCESSES (QUẢN LÝ TIẾN TRÌNH & END TASK)
+    # TAB 1: PROCESSES (VIRTUALIZED MODEL/VIEW - SIÊU MƯỢT)
     # ----------------------------------------------------
     def init_processes_tab(self):
         tab = QWidget()
@@ -470,7 +616,7 @@ class LinuxTaskManager(QMainWindow):
 
         self.proc_search = QLineEdit(self)
         self.proc_search.setPlaceholderText("🔍 Tìm kiếm tiến trình theo tên hoặc PID...")
-        self.proc_search.textChanged.connect(self.filter_processes_table)
+        self.proc_search.textChanged.connect(self.on_search_changed)
 
         self.lbl_proc_count = QLabel("Tổng: 0 tiến trình", self)
         self.lbl_proc_count.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
@@ -480,28 +626,39 @@ class LinuxTaskManager(QMainWindow):
         toolbar.addWidget(self.lbl_proc_count, stretch=1)
         layout.addLayout(toolbar)
 
-        # Bảng danh sách tiến trình
-        self.proc_table = QTableWidget(self)
-        self.proc_table.setColumnCount(7)
-        self.proc_table.setHorizontalHeaderLabels([
-            "Tên Tiến Trình", "PID", "Trạng Thái", "CPU %", "Bộ Nhớ RAM", "RAM %", "Người Dùng"
-        ])
-        self.proc_table.verticalHeader().setVisible(False)
-        self.proc_table.verticalHeader().setDefaultSectionSize(34)
-        self.proc_table.horizontalHeader().setSectionResizeMode(QHeaderView.Stretch)
-        self.proc_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
-        self.proc_table.horizontalHeader().resizeSection(0, 240)
-        self.proc_table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        self.proc_table.horizontalHeader().setSectionResizeMode(2, QHeaderView.ResizeToContents)
-        self.proc_table.horizontalHeader().setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        self.proc_table.horizontalHeader().setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        self.proc_table.horizontalHeader().setSectionResizeMode(5, QHeaderView.ResizeToContents)
-        self.proc_table.setSortingEnabled(True)
-        self.proc_table.setSelectionBehavior(QTableWidget.SelectRows)
-        self.proc_table.setContextMenuPolicy(Qt.CustomContextMenu)
-        self.proc_table.customContextMenuRequested.connect(self.show_process_context_menu)
-        self.proc_table.itemSelectionChanged.connect(self.on_process_selected)
-        layout.addWidget(self.proc_table)
+        # Bảng Process sử dụng QTableView + ProcessTableModel (Không giật lag)
+        self.proc_model = ProcessTableModel(self)
+        
+        # Proxy model để tìm kiếm nhanh
+        self.proxy_model = QSortFilterProxyModel(self)
+        self.proxy_model.setSourceModel(self.proc_model)
+        self.proxy_model.setFilterKeyColumn(-1)  # Tìm trên tất cả các cột
+        self.proxy_model.setFilterCaseSensitivity(Qt.CaseInsensitive)
+
+        self.proc_view = QTableView(self)
+        self.proc_view.setModel(self.proxy_model)
+        self.proc_view.verticalHeader().setVisible(False)
+        self.proc_view.verticalHeader().setDefaultSectionSize(34)
+        self.proc_view.setSortingEnabled(True)
+        self.proc_view.sortByColumn(3, Qt.DescendingOrder)  # Mặc định CPU % cao nhất lên đầu
+        self.proc_view.setSelectionBehavior(QTableView.SelectRows)
+        self.proc_view.setSelectionMode(QTableView.SingleSelection)
+        self.proc_view.setContextMenuPolicy(Qt.CustomContextMenu)
+        self.proc_view.customContextMenuRequested.connect(self.show_process_context_menu)
+        self.proc_view.selectionModel().selectionChanged.connect(self.on_process_selected)
+
+        # Thiết lập độ rộng cột
+        h_header = self.proc_view.horizontalHeader()
+        h_header.setSectionResizeMode(QHeaderView.Stretch)
+        h_header.setSectionResizeMode(0, QHeaderView.Interactive)
+        h_header.resizeSection(0, 260)
+        h_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        h_header.setSectionResizeMode(2, QHeaderView.ResizeToContents)
+        h_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        h_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
+        h_header.setSectionResizeMode(5, QHeaderView.ResizeToContents)
+
+        layout.addWidget(self.proc_view)
 
         # Bottom Bar: Nút End Task góc phải chuẩn Windows
         bottom_bar = QHBoxLayout()
@@ -531,6 +688,11 @@ class LinuxTaskManager(QMainWindow):
         layout.addLayout(bottom_bar)
 
         self.tabs.addTab(tab, "📋 Tiến trình")
+
+    def on_search_changed(self, text):
+        reg = QRegExp(text, Qt.CaseInsensitive, QRegExp.FixedString)
+        self.proxy_model.setFilterRegExp(reg)
+        self.lbl_proc_count.setText(f"Tổng: {self.proxy_model.rowCount()} tiến trình (Đang lọc)")
 
     # ----------------------------------------------------
     # TAB 2: PERFORMANCE (BIỂU ĐỒ HIỆU NĂNG THỜI GIAN THỰC)
@@ -878,7 +1040,7 @@ class LinuxTaskManager(QMainWindow):
         self.perf_buttons[3].lbl_s.setText(f"Tải: {format_bytes(s['net_down_speed'])}/s")
 
         # 3. Update Real-time Graph & Details theo Tab được chọn
-        if self.selected_perf_tab == 0: # CPU
+        if self.selected_perf_tab == 0:  # CPU
             self.realtime_graph.set_max_val(100.0)
             self.realtime_graph.unit = "%"
             self.realtime_graph.add_data_point(cpu_p)
@@ -890,7 +1052,7 @@ class LinuxTaskManager(QMainWindow):
                 ("Thời gian hoạt động", s["uptime"]),
                 ("Mẫu CPU", get_cpu_model().split("@")[0].strip())
             ])
-        elif self.selected_perf_tab == 1: # RAM
+        elif self.selected_perf_tab == 1:  # RAM
             self.realtime_graph.set_max_val(100.0)
             self.realtime_graph.unit = "%"
             self.realtime_graph.add_data_point(ram_p)
@@ -902,7 +1064,7 @@ class LinuxTaskManager(QMainWindow):
                 ("Swap còn trống", format_bytes(s["swap_total"] - s["swap_used"])),
                 ("Tổng bộ nhớ Swap", format_bytes(s["swap_total"]))
             ])
-        elif self.selected_perf_tab == 2: # DISK
+        elif self.selected_perf_tab == 2:  # DISK
             self.realtime_graph.set_max_val(max(tot_disk_speed * 1.5, 50.0))
             self.realtime_graph.unit = " MB/s"
             self.realtime_graph.add_data_point(tot_disk_speed)
@@ -914,7 +1076,7 @@ class LinuxTaskManager(QMainWindow):
                 ("Phân vùng DATA", f"{format_bytes(psutil.disk_usage('/media/tanma/DATA').free if os.path.exists('/media/tanma/DATA') else 0)} trống"),
                 ("Loại ổ đĩa", "SSD / NVMe / HDD")
             ])
-        elif self.selected_perf_tab == 3: # NETWORK
+        elif self.selected_perf_tab == 3:  # NETWORK
             self.realtime_graph.set_max_val(max(tot_net_speed * 1.5, 100.0))
             self.realtime_graph.unit = " KB/s"
             self.realtime_graph.add_data_point(tot_net_speed)
@@ -926,10 +1088,10 @@ class LinuxTaskManager(QMainWindow):
                 ("Trạng thái mạng", "Đã kết nối Internet"),
                 ("Địa chỉ IPv4", "DHCP Cục bộ")
             ])
-        elif self.selected_perf_tab == 4: # GPU
+        elif self.selected_perf_tab == 4:  # GPU
             self.realtime_graph.set_max_val(100.0)
             self.realtime_graph.unit = "%"
-            self.realtime_graph.add_data_point(cpu_p * 0.4) # Ước lượng tải đồ họa
+            self.realtime_graph.add_data_point(cpu_p * 0.4)
             self.update_perf_details([
                 ("Tên Card đồ họa", get_gpu_info_text()),
                 ("Loại GPU", "Đồ họa tích hợp (Integrated)"),
@@ -957,111 +1119,50 @@ class LinuxTaskManager(QMainWindow):
             self.detail_labels[f"title_{i}"].setText(f"• {k}:")
             self.detail_labels[f"val_{i}"].setText(v)
 
-    # --- CẬP NHẬT BẢNG TIẾN TRÌNH (PROCESS TABLE) ---
+    # --- CẬP NHẬT BẢNG TIẾN TRÌNH (ZERO-LAG VIRTUALIZED) ---
     def on_processes_updated(self, proc_list):
-        self.processes_data = proc_list
-        self.filter_processes_table()
-
-    def filter_processes_table(self):
-        query = self.proc_search.text().strip().lower()
-        filtered = []
-        for p in self.processes_data:
-            if not query or (query in p["name"].lower() or query == str(p["pid"])):
-                filtered.append(p)
-
-        self.lbl_proc_count.setText(f"Tổng: {len(filtered)} tiến trình (Đang chạy)")
-
-        self.proc_table.setSortingEnabled(False)
-        self.proc_table.setRowCount(len(filtered))
-
-        for row, p in enumerate(filtered):
-            # 0. Tên
-            item_name = QTableWidgetItem(p["name"])
-            self.proc_table.setItem(row, 0, item_name)
-
-            # 1. PID
-            item_pid = QTableWidgetItem()
-            item_pid.setData(Qt.DisplayRole, p["pid"])
-            item_pid.setTextAlignment(Qt.AlignCenter)
-            self.proc_table.setItem(row, 1, item_pid)
-
-            # 2. Trạng thái
-            st_text = "Đang chạy" if p["status"] in ["running", "sleeping"] else p["status"]
-            item_st = QTableWidgetItem(st_text)
-            item_st.setTextAlignment(Qt.AlignCenter)
-            self.proc_table.setItem(row, 2, item_st)
-
-            # 3. CPU % (Tô màu Heatmap)
-            cpu_val = p["cpu_percent"]
-            item_cpu = QTableWidgetItem()
-            item_cpu.setData(Qt.DisplayRole, round(cpu_val, 1))
-            item_cpu.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            if cpu_val > 50.0:
-                item_cpu.setBackground(QColor("#fee2e2")) # Đỏ
-                item_cpu.setForeground(QColor("#991b1b"))
-            elif cpu_val > 20.0:
-                item_cpu.setBackground(QColor("#ffedd5")) # Cam
-                item_cpu.setForeground(QColor("#9a3412"))
-            elif cpu_val > 5.0:
-                item_cpu.setBackground(QColor("#fef9c3")) # Vàng
-                item_cpu.setForeground(QColor("#854d0e"))
-            self.proc_table.setItem(row, 3, item_cpu)
-
-            # 4. RAM (MB)
-            item_ram_mb = QTableWidgetItem()
-            item_ram_mb.setData(Qt.DisplayRole, round(p["ram_mb"], 1))
-            item_ram_mb.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            self.proc_table.setItem(row, 4, item_ram_mb)
-
-            # 5. RAM % (Tô màu Heatmap)
-            ram_p = p["ram_percent"]
-            item_ram_p = QTableWidgetItem()
-            item_ram_p.setData(Qt.DisplayRole, round(ram_p, 1))
-            item_ram_p.setTextAlignment(Qt.AlignRight | Qt.AlignVCenter)
-            if ram_p > 30.0:
-                item_ram_p.setBackground(QColor("#fee2e2"))
-                item_ram_p.setForeground(QColor("#991b1b"))
-            elif ram_p > 10.0:
-                item_ram_p.setBackground(QColor("#ffedd5"))
-                item_ram_p.setForeground(QColor("#9a3412"))
-            self.proc_table.setItem(row, 5, item_ram_p)
-
-            # 6. Người dùng
-            item_user = QTableWidgetItem(p["user"])
-            item_user.setTextAlignment(Qt.AlignCenter)
-            self.proc_table.setItem(row, 6, item_user)
-
-        self.proc_table.setSortingEnabled(True)
+        # Cập nhật dữ liệu vào Model ảo hóa
+        self.proc_model.update_data(proc_list)
+        
+        # Cập nhật số lượng
+        count = self.proxy_model.rowCount()
+        if self.proc_search.text().strip():
+            self.lbl_proc_count.setText(f"Tổng: {count} tiến trình (Đang lọc)")
+        else:
+            self.lbl_proc_count.setText(f"Tổng: {count} tiến trình (Đang chạy)")
 
     def on_process_selected(self):
-        selected_rows = self.proc_table.selectionModel().selectedRows()
-        if selected_rows:
-            row = selected_rows[0].row()
-            pid_item = self.proc_table.item(row, 1)
-            name_item = self.proc_table.item(row, 0)
-            if pid_item and name_item:
-                self.selected_pid = int(pid_item.text())
-                self.lbl_selected_proc.setText(f"Đã chọn: <b>{name_item.text()}</b> (PID: {self.selected_pid})")
+        indexes = self.proc_view.selectionModel().selectedRows()
+        if indexes:
+            proxy_idx = indexes[0]
+            source_idx = self.proxy_model.mapToSource(proxy_idx)
+            p = self.proc_model.get_process(source_idx.row())
+            if p:
+                self.selected_pid = p["pid"]
+                self.selected_proc_name = p["name"]
+                self.lbl_selected_proc.setText(f"Đã chọn: <b>{p['name']}</b> (PID: {p['pid']})")
                 self.lbl_selected_proc.setStyleSheet("color: #1e293b;")
                 self.btn_end_task.setEnabled(True)
                 return
+
         self.selected_pid = None
+        self.selected_proc_name = ""
         self.lbl_selected_proc.setText("Chưa chọn tiến trình nào")
         self.lbl_selected_proc.setStyleSheet("color: #64748b; font-style: italic;")
         self.btn_end_task.setEnabled(False)
 
     def show_process_context_menu(self, pos):
-        item = self.proc_table.itemAt(pos)
-        if not item:
-            return
-        row = item.row()
-        pid_item = self.proc_table.item(row, 1)
-        name_item = self.proc_table.item(row, 0)
-        if not pid_item:
+        proxy_idx = self.proc_view.indexAt(pos)
+        if not proxy_idx.isValid():
             return
         
-        pid = int(pid_item.text())
-        name = name_item.text()
+        source_idx = self.proxy_model.mapToSource(proxy_idx)
+        p = self.proc_model.get_process(source_idx.row())
+        if not p:
+            return
+
+        pid = p["pid"]
+        name = p["name"]
 
         menu = QMenu(self)
         menu.setStyleSheet("""
@@ -1091,16 +1192,10 @@ class LinuxTaskManager(QMainWindow):
 
     def confirm_end_task(self):
         if self.selected_pid:
-            # Tìm tên tiến trình
-            name = "Tiến trình"
-            for p in self.processes_data:
-                if p["pid"] == self.selected_pid:
-                    name = p["name"]
-                    break
-
+            name = self.selected_proc_name or "Tiến trình"
             reply = QMessageBox.question(
                 self, "Xác nhận kết thúc tác vụ",
-                f"Anh Tân có chắc chắn muốn kết thúc tiến trình '{name}' (PID: {self.selected_pid}) không?\\n\\n"
+                f"Anh Tân có chắc chắn muốn kết thúc tiến trình '{name}' (PID: {self.selected_pid}) không?\n\n"
                 "Nếu tiến trình có dữ liệu chưa lưu, việc đóng đột ngột có thể làm mất dữ liệu đó.",
                 QMessageBox.Yes | QMessageBox.No, QMessageBox.No
             )
@@ -1111,15 +1206,14 @@ class LinuxTaskManager(QMainWindow):
         try:
             p = psutil.Process(pid)
             if force:
-                p.kill() # SIGKILL
+                p.kill()  # SIGKILL
             else:
-                p.terminate() # SIGTERM
+                p.terminate()  # SIGTERM
             
             QMessageBox.information(self, "Thành công", f"Đã gửi lệnh kết thúc tiến trình '{name}' (PID: {pid}) thành công!")
         except psutil.NoSuchProcess:
             QMessageBox.information(self, "Thông báo", f"Tiến trình '{name}' (PID: {pid}) đã tự đóng trước đó.")
         except psutil.AccessDenied:
-            # Nếu bị từ chối quyền, thử dùng pkexec
             cmd = ["pkexec", "kill", "-9" if force else "-15", str(pid)]
             try:
                 proc = subprocess.run(cmd, capture_output=True, text=True)
