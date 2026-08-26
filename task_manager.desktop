@@ -1,0 +1,11 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=Linux Task Manager
+Comment=Trình Quản Lý Tác Vụ Linux (Windows Style - CPU, RAM, GPU, Disk, Processes)
+Exec=python3 /media/tanma/DATA/terminal/task_manager_gui.py
+Icon=utilities-system-monitor
+Terminal=false
+Categories=System;Monitor;Utility;
+Keywords=task;manager;process;cpu;ram;gpu;kill;endtask;
+StartupNotify=true
