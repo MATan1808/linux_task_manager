@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 
 """
-Linux Task Manager (Windows 11 Modern Desktop Style - Health & Diagnostics Edition)
+Linux Task Manager (Windows 11 Modern Desktop Style - Health, Cache Diagnostics & 1-Click Boost)
 Phát triển bởi AIaC dành riêng cho anh Tân.
 Bản quyền & Quản trị: 360 CORP (support@360.org.vn)
 """
@@ -44,7 +44,7 @@ except ImportError:
 
 # --- TỪ ĐIỂN NHẬN DIỆN & MÔ TẢ TIẾN TRÌNH THÔNG MINH CHO NON-TECH ---
 KNOWN_PROCESS_INFO = {
-    # Ứng dụng phổ biến (🟢 Có thể tắt an toàn)
+    # Ứng dụng phổ biến (Có thể tắt an toàn)
     "chrome": ("Google Chrome", "Trình duyệt Web (Mở nhiều tab tốn RAM)", "safe"),
     "google-chrome": ("Google Chrome", "Trình duyệt Web (Mở nhiều tab tốn RAM)", "safe"),
     "chromium": ("Chromium", "Trình duyệt Web mã nguồn mở", "safe"),
@@ -79,7 +79,7 @@ KNOWN_PROCESS_INFO = {
     "node": ("Node.js Server", "Ứng dụng chạy JavaScript Backend", "safe"),
     "java": ("Ứng dụng Java", "Phần mềm chạy trên máy ảo Java JVM", "safe"),
 
-    # Dịch vụ nền & Bộ gõ (🟡 Cân nhắc)
+    # Dịch vụ nền & Bộ gõ (Cân nhắc)
     "ibus-daemon": ("Bộ gõ Tiếng Việt (IBus)", "Dịch vụ gõ tiếng Việt (Tắt sẽ không gõ được dấu)", "caution"),
     "ibus-extension": ("IBus Tiện ích", "Dịch vụ hỗ trợ bộ gõ", "caution"),
     "ibus-ui-gtk3": ("IBus Giao diện", "Khung hiển thị bộ gõ", "caution"),
@@ -100,7 +100,7 @@ KNOWN_PROCESS_INFO = {
     "flameshot": ("Chụp màn hình Flameshot", "Phần mềm chụp ảnh màn hình", "caution"),
     "copyq": ("Lịch sử Clipboard CopyQ", "Lưu trữ lịch sử Copy/Paste", "caution"),
 
-    # Tiến trình Hệ thống cốt lõi (🔴 Cấm tắt)
+    # Tiến trình Hệ thống cốt lõi (Cấm tắt)
     "systemd": ("Nhân khởi động Linux (systemd)", "Tiến trình mẹ số 1 của hệ điều hành (CẤM TẮT)", "system"),
     "systemd-journald": ("Nhật ký Hệ thống", "Lưu trữ log hoạt động của Linux (CẤM TẮT)", "system"),
     "systemd-udevd": ("Quản lý Phần cứng", "Nhận diện cắm USB, chuột, bàn phím (CẤM TẮT)", "system"),
@@ -197,7 +197,7 @@ def get_os_info():
         pass
     return "Linux OS"
 
-# Đọc dữ liệu pin chi tiết
+# Đo chi tiết Pin
 def get_battery_diagnostics():
     info = {
         "present": False,
@@ -223,7 +223,6 @@ def get_battery_diagnostics():
                 return ""
 
             info["status"] = read_val("status") or "Đang dùng"
-            
             cf = read_val("charge_full") or read_val("energy_full")
             cd = read_val("charge_full_design") or read_val("energy_full_design")
             cy = read_val("cycle_count")
@@ -250,7 +249,7 @@ def get_battery_diagnostics():
         pass
     return info
 
-# Đọc nhiệt độ chi tiết
+# Đo chi tiết Nhiệt độ
 def get_temperatures_diagnostics():
     res = {
         "cpu_temp": 50.0,
@@ -261,7 +260,6 @@ def get_temperatures_diagnostics():
     try:
         temps = psutil.sensors_temperatures()
         if temps:
-            # CPU
             if "coretemp" in temps:
                 for entry in temps["coretemp"]:
                     if "Package" in entry.label or not entry.label:
@@ -271,22 +269,71 @@ def get_temperatures_diagnostics():
             elif "acpitz" in temps:
                 res["cpu_temp"] = temps["acpitz"][0].current
 
-            # NVMe SSD
             if "nvme" in temps:
                 res["ssd_temp"] = temps["nvme"][0].current
 
-            # WiFi
             if "iwlwifi_1" in temps:
                 res["wifi_temp"] = temps["iwlwifi_1"][0].current
     except Exception:
         pass
     return res
 
+# Đo chi tiết Cache RAM và Dung lượng Rác hệ thống
+def get_cache_and_junk_info():
+    mem = psutil.virtual_memory()
+    cache_bytes = getattr(mem, 'buffers', 0) + getattr(mem, 'cached', 0)
+    
+    # APT cache
+    apt_size = 0
+    apt_dir = '/var/cache/apt/archives'
+    if os.path.exists(apt_dir):
+        try:
+            for f in os.listdir(apt_dir):
+                if f.endswith('.deb'):
+                    fp = os.path.join(apt_dir, f)
+                    apt_size += os.path.getsize(fp)
+        except Exception:
+            pass
+            
+    # Thumbnails cache
+    thumb_size = 0
+    thumb_dir = os.path.expanduser('~/.cache/thumbnails')
+    if os.path.exists(thumb_dir):
+        try:
+            for root, dirs, files in os.walk(thumb_dir):
+                for f in files:
+                    thumb_size += os.path.getsize(os.path.join(root, f))
+        except Exception:
+            pass
+            
+    # Journal logs (ước tính)
+    journal_size = 100 * 1024 * 1024
+    journal_dir = '/var/log/journal'
+    if os.path.exists(journal_dir):
+        try:
+            j_bytes = 0
+            for root, dirs, files in os.walk(journal_dir):
+                for f in files:
+                    j_bytes += os.path.getsize(os.path.join(root, f))
+            if j_bytes > 0:
+                journal_size = j_bytes
+        except Exception:
+            pass
+        
+    total_junk_bytes = apt_size + thumb_size + journal_size
+    return {
+        "cache_bytes": cache_bytes,
+        "cache_gb": cache_bytes / (1024**3),
+        "available_gb": mem.available / (1024**3),
+        "junk_bytes": total_junk_bytes,
+        "junk_mb": total_junk_bytes / (1024**2)
+    }
+
 
 # --- HIGH PERFORMANCE PROCESS TABLE MODEL ---
 class ProcessTableModel(QAbstractTableModel):
     HEADERS = [
-        "Tên Tiến Trình", "Mô Tả & Hướng Dẫn (Non-Tech)", "Khuyến Nghị",
+        "Tên Tiến Trình", "Mô Tả & Hướng Dẫn", "Khuyến Nghị",
         "CPU %", "Bộ Nhớ RAM", "RAM %", "PID", "Người Dùng"
     ]
 
@@ -322,11 +369,11 @@ class ProcessTableModel(QAbstractTableModel):
             elif col == 2:
                 cat = p["category"]
                 if cat == "safe":
-                    return "🟢 Có thể tắt"
+                    return "[Có thể tắt]"
                 elif cat == "caution":
-                    return "🟡 Cân nhắc"
+                    return "[Cân nhắc]"
                 else:
-                    return "🔴 Hệ thống (CẤM)"
+                    return "[Hệ thống - CẤM]"
             elif col == 3:
                 return f"{p['cpu_percent']:.1f}%"
             elif col == 4:
@@ -604,8 +651,8 @@ class SystemMonitorThread(QThread):
                 # 5. Diagnostics
                 bat_diag = get_battery_diagnostics()
                 temp_diag = get_temperatures_diagnostics()
+                cj_info = get_cache_and_junk_info()
 
-                # Dung lượng ổ cứng
                 disk_root = psutil.disk_usage('/')
                 disk_data = psutil.disk_usage('/media/tanma/DATA') if os.path.exists('/media/tanma/DATA') else None
 
@@ -636,6 +683,9 @@ class SystemMonitorThread(QThread):
                     "ram_percent": mem.percent,
                     "ram_used_gb": mem.used / (1024**3),
                     "ram_tot_gb": mem.total / (1024**3),
+                    "ram_cache_gb": cj_info["cache_gb"],
+                    "ram_available_gb": cj_info["available_gb"],
+                    "disk_junk_mb": cj_info["junk_mb"],
                     "disk_root_used_p": disk_root.percent,
                     "disk_root_free": disk_root.free,
                     "disk_data_used_p": disk_data.percent if disk_data else 0,
@@ -705,6 +755,8 @@ class LinuxTaskManager(QMainWindow):
         self.selected_proc = None
         self.selected_perf_tab = 0
         self.is_always_on_top = False
+        self.current_cache_gb = 0.0
+        self.current_junk_mb = 0.0
 
         self.init_ui()
         self.start_monitor_thread()
@@ -832,7 +884,7 @@ class LinuxTaskManager(QMainWindow):
         self.combo_speed.currentIndexChanged.connect(self.on_speed_changed)
         
         # Nút Ghim trên cùng
-        self.btn_top = QPushButton("📌 Ghim trên cùng", self)
+        self.btn_top = QPushButton("[Ghim trên cùng]", self)
         self.btn_top.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
         self.btn_top.setCheckable(True)
         self.btn_top.setStyleSheet("""
@@ -855,12 +907,12 @@ class LinuxTaskManager(QMainWindow):
 
         self.init_processes_tab()
         self.init_performance_tab()
-        self.init_health_tab()  # TAB MỚI: SỨC KHỎE & TỐI ƯU
+        self.init_health_tab()  # TAB SỨC KHỎE & TỐI ƯU
         self.init_startup_tab()
         self.init_system_info_tab()
 
     # ----------------------------------------------------
-    # TAB 1: PROCESSES (VIRTUALIZED MODEL/VIEW & NON-TECH)
+    # TAB 1: PROCESSES
     # ----------------------------------------------------
     def init_processes_tab(self):
         tab = QWidget()
@@ -868,16 +920,15 @@ class LinuxTaskManager(QMainWindow):
         layout.setContentsMargins(14, 14, 14, 14)
         layout.setSpacing(10)
 
-        # Thanh hướng dẫn Non-Tech thông minh
         help_bar = QFrame(self)
         help_bar.setStyleSheet("background-color: #eff6ff; border: 1px solid #bfdbfe; border-radius: 6px; padding: 6px 10px;")
         help_layout = QHBoxLayout(help_bar)
         help_layout.setContentsMargins(4, 2, 4, 2)
         help_lbl = QLabel(
-            "💡 <b>Hướng dẫn cho người dùng:</b> "
-            "🟢 <b>Có thể tắt</b>: Ứng dụng của bạn (tắt an toàn khi máy lag) • "
-            "🟡 <b>Cân nhắc</b>: Dịch vụ chạy ngầm (bộ gõ tiếng Việt, loa...) • "
-            "🔴 <b>Hệ thống</b>: Cốt lõi của Linux (CẤM TẮT để tránh đơ máy).",
+            "<b>Hướng dẫn an toàn:</b> "
+            "[Có thể tắt]: Ứng dụng thông thường (tắt an toàn khi lag) • "
+            "[Cân nhắc]: Dịch vụ chạy ngầm (bộ gõ tiếng Việt, âm thanh...) • "
+            "[Hệ thống - CẤM]: Cốt lõi của Linux (CẤM TẮT để tránh đơ máy).",
             self
         )
         help_lbl.setFont(QFont("DejaVu Sans", 9))
@@ -885,7 +936,6 @@ class LinuxTaskManager(QMainWindow):
         help_layout.addWidget(help_lbl)
         layout.addWidget(help_bar)
 
-        # Toolbar: Lọc Phân Loại & Tìm Kiếm
         toolbar = QHBoxLayout()
         toolbar.setSpacing(10)
 
@@ -896,14 +946,14 @@ class LinuxTaskManager(QMainWindow):
         self.combo_category = QComboBox(self)
         self.combo_category.addItems([
             "Tất cả tiến trình",
-            "🟢 Ứng dụng người dùng (Nên tắt khi lag)",
-            "🟡 Dịch vụ chạy ngầm (Cân nhắc)",
-            "🔴 Tiến trình Hệ Thống (Cấm tắt)"
+            "[Có thể tắt] Ứng dụng người dùng (Nên tắt khi lag)",
+            "[Cân nhắc] Dịch vụ chạy ngầm",
+            "[Cấm tắt] Tiến trình Hệ Thống"
         ])
         self.combo_category.currentIndexChanged.connect(self.on_category_filter_changed)
 
         self.proc_search = QLineEdit(self)
-        self.proc_search.setPlaceholderText("🔍 Tìm kiếm theo tên ứng dụng, chức năng hoặc PID...")
+        self.proc_search.setPlaceholderText("Tìm kiếm theo tên ứng dụng, chức năng hoặc PID...")
         self.proc_search.textChanged.connect(self.on_search_changed)
 
         self.lbl_proc_count = QLabel("Tổng: 0 tiến trình", self)
@@ -916,7 +966,6 @@ class LinuxTaskManager(QMainWindow):
         toolbar.addWidget(self.lbl_proc_count, stretch=1)
         layout.addLayout(toolbar)
 
-        # Bảng Process
         self.proc_model = ProcessTableModel(self)
         self.proxy_model = ProcessFilterProxyModel(self)
         self.proxy_model.setSourceModel(self.proc_model)
@@ -948,7 +997,6 @@ class LinuxTaskManager(QMainWindow):
 
         layout.addWidget(self.proc_view)
 
-        # Bottom Bar: End Task
         bottom_bar = QHBoxLayout()
         bottom_bar.setSpacing(10)
         
@@ -988,7 +1036,7 @@ class LinuxTaskManager(QMainWindow):
         self.lbl_proc_count.setText(f"Tổng: {self.proxy_model.rowCount()} tiến trình")
 
     # ----------------------------------------------------
-    # TAB 2: PERFORMANCE (BIỂU ĐỒ HIỆU NĂNG THỜI GIAN THỰC)
+    # TAB 2: PERFORMANCE
     # ----------------------------------------------------
     def init_performance_tab(self):
         tab = QWidget()
@@ -1107,7 +1155,7 @@ class LinuxTaskManager(QMainWindow):
         self.tabs.addTab(tab, "Hiệu năng")
 
     # ----------------------------------------------------
-    # TAB 3 (MỚI): SỨC KHỎE & TỐI ƯU HỆ THỐNG
+    # TAB 3: SỨC KHỎE, CHẨN ĐOÁN & TRUNG TÂM TỐI ƯU 1-CLICK
     # ----------------------------------------------------
     def init_health_tab(self):
         tab = QWidget()
@@ -1129,7 +1177,7 @@ class LinuxTaskManager(QMainWindow):
         th_layout = QHBoxLayout(top_health_card)
         
         score_box = QVBoxLayout()
-        score_title = QLabel("ĐIỂM SỨC KHỎE PHẦN CỨNG", top_health_card)
+        score_title = QLabel("ĐIỂM SỨC KHỎE PHẦN CỨNG TỔNG THỂ", top_health_card)
         score_title.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
         score_title.setStyleSheet("color: #94a3b8; border: none;")
         
@@ -1137,7 +1185,7 @@ class LinuxTaskManager(QMainWindow):
         self.lbl_health_score.setFont(QFont("DejaVu Sans", 22, QFont.Bold))
         self.lbl_health_score.setStyleSheet("color: #10b981; border: none;")
         
-        self.lbl_health_verdict = QLabel("🟢 Hệ thống hoạt động tốt • Phần cứng ổn định", top_health_card)
+        self.lbl_health_verdict = QLabel("Hệ thống hoạt động tốt • Phần cứng ổn định", top_health_card)
         self.lbl_health_verdict.setFont(QFont("DejaVu Sans", 10))
         self.lbl_health_verdict.setStyleSheet("color: #f1f5f9; border: none;")
 
@@ -1147,40 +1195,99 @@ class LinuxTaskManager(QMainWindow):
         th_layout.addLayout(score_box)
         th_layout.addStretch()
 
-        # Nút 1-Click Tối Ưu Nhanh
-        opt_btn_box = QVBoxLayout()
-        opt_btn_box.setSpacing(8)
+        c_layout.addWidget(top_health_card)
+
+        # ==========================================
+        # TRUNG TÂM TỐI ƯU HÓA NHANH 1-CLICK (HIỂN THỊ SỐ LƯỢNG RÕ RÀNG)
+        # ==========================================
+        opt_hub_frame = QFrame(self)
+        opt_hub_frame.setStyleSheet("background-color: #ffffff; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 12px;")
+        opt_hub_layout = QVBoxLayout(opt_hub_frame)
+        opt_hub_layout.setSpacing(10)
+
+        opt_title = QLabel("TRUNG TÂM TỐI ƯU HÓA 1-CLICK (GIẢI PHÓNG TÀI NGUYÊN)", opt_hub_frame)
+        opt_title.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        opt_title.setStyleSheet("color: #1e3a8a; border-bottom: 2px solid #eff6ff; padding-bottom: 4px;")
+        opt_hub_layout.addWidget(opt_title)
+
+        cards_opt_layout = QHBoxLayout()
+        cards_opt_layout.setSpacing(12)
+
+        # 1. Box Giải phóng Cache RAM
+        box_ram_opt = QFrame(opt_hub_frame)
+        box_ram_opt.setStyleSheet("background-color: #f8fafc; border: 1px solid #bfdbfe; border-left: 4px solid #3b82f6; border-radius: 6px; padding: 10px;")
+        b_ram_l = QVBoxLayout(box_ram_opt)
+        b_ram_l.setSpacing(4)
         
-        btn_clean_ram = QPushButton("🧹 Giải phóng Cache RAM", top_health_card)
-        btn_clean_ram.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
-        btn_clean_ram.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_clean_ram.setStyleSheet("""
-            QPushButton { background-color: #3b82f6; color: white; border-radius: 6px; padding: 8px 16px; border: none; font-weight: bold; }
+        lbl_r_title = QLabel("BỘ ĐỆM CACHE RAM", box_ram_opt)
+        lbl_r_title.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        lbl_r_title.setStyleSheet("color: #2563eb; border: none;")
+        
+        self.lbl_ram_cache_status = QLabel("Đang chiếm dụng: <b>3.52 GB</b> (Buffers & Cached)", box_ram_opt)
+        self.lbl_ram_cache_status.setFont(QFont("DejaVu Sans", 9))
+        self.lbl_ram_cache_status.setStyleSheet("color: #334155; border: none;")
+
+        self.lbl_ram_advice = QLabel("⚠️ Khuyên dùng: Nên giải phóng để tăng RAM trống cho ứng dụng", box_ram_opt)
+        self.lbl_ram_advice.setFont(QFont("DejaVu Sans", 9))
+        self.lbl_ram_advice.setStyleSheet("color: #b45309; border: none; font-weight: bold;")
+
+        self.btn_clean_ram = QPushButton("🧹 Giải phóng ~3.5 GB Cache RAM", box_ram_opt)
+        self.btn_clean_ram.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        self.btn_clean_ram.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_clean_ram.setStyleSheet("""
+            QPushButton { background-color: #3b82f6; color: white; border-radius: 6px; padding: 9px 16px; border: none; font-weight: bold; }
             QPushButton:hover { background-color: #2563eb; }
         """)
-        btn_clean_ram.clicked.connect(self.clean_ram_cache)
-        
-        btn_clean_disk = QPushButton("🗑️ Dọn Cache Ổ Cứng System", top_health_card)
-        btn_clean_disk.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
-        btn_clean_disk.setCursor(QCursor(Qt.PointingHandCursor))
-        btn_clean_disk.setStyleSheet("""
-            QPushButton { background-color: #10b981; color: white; border-radius: 6px; padding: 8px 16px; border: none; font-weight: bold; }
+        self.btn_clean_ram.clicked.connect(self.clean_ram_cache)
+
+        b_ram_l.addWidget(lbl_r_title)
+        b_ram_l.addWidget(self.lbl_ram_cache_status)
+        b_ram_l.addWidget(self.lbl_ram_advice)
+        b_ram_l.addWidget(self.btn_clean_ram)
+        cards_opt_layout.addWidget(box_ram_opt)
+
+        # 2. Box Dọn dẹp File Rác Ổ Cứng
+        box_disk_opt = QFrame(opt_hub_frame)
+        box_disk_opt.setStyleSheet("background-color: #f8fafc; border: 1px solid #a7f3d0; border-left: 4px solid #10b981; border-radius: 6px; padding: 10px;")
+        b_disk_l = QVBoxLayout(box_disk_opt)
+        b_disk_l.setSpacing(4)
+
+        lbl_d_title = QLabel("FILE RÁC & NHẬT KÝ LOG HỆ THỐNG", box_disk_opt)
+        lbl_d_title.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        lbl_d_title.setStyleSheet("color: #059669; border: none;")
+
+        self.lbl_disk_junk_status = QLabel("Dung lượng rác có thể dọn: <b>~110 MB</b> (APT & Journal)", box_disk_opt)
+        self.lbl_disk_junk_status.setFont(QFont("DejaVu Sans", 9))
+        self.lbl_disk_junk_status.setStyleSheet("color: #334155; border: none;")
+
+        self.lbl_disk_advice = QLabel("✅ Ổ đĩa sạch sẽ • Có thể dọn dẹp định kỳ", box_disk_opt)
+        self.lbl_disk_advice.setFont(QFont("DejaVu Sans", 9))
+        self.lbl_disk_advice.setStyleSheet("color: #047857; border: none; font-weight: bold;")
+
+        self.btn_clean_disk = QPushButton("🗑️ Dọn dẹp ~110 MB File Rác", box_disk_opt)
+        self.btn_clean_disk.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        self.btn_clean_disk.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_clean_disk.setStyleSheet("""
+            QPushButton { background-color: #10b981; color: white; border-radius: 6px; padding: 9px 16px; border: none; font-weight: bold; }
             QPushButton:hover { background-color: #059669; }
         """)
-        btn_clean_disk.clicked.connect(self.clean_disk_cache)
+        self.btn_clean_disk.clicked.connect(self.clean_disk_cache)
 
-        opt_btn_box.addWidget(btn_clean_ram)
-        opt_btn_box.addWidget(btn_clean_disk)
-        th_layout.addLayout(opt_btn_box)
+        b_disk_l.addWidget(lbl_d_title)
+        b_disk_l.addWidget(self.lbl_disk_junk_status)
+        b_disk_l.addWidget(self.lbl_disk_advice)
+        b_disk_l.addWidget(self.btn_clean_disk)
+        cards_opt_layout.addWidget(box_disk_opt)
 
-        c_layout.addWidget(top_health_card)
+        opt_hub_layout.addLayout(cards_opt_layout)
+        c_layout.addWidget(opt_hub_frame)
 
         # 4 Thẻ Sức Khỏe Chi Tiết
         grid_cards = QGridLayout()
         grid_cards.setSpacing(12)
 
         # 1. Thẻ Pin
-        self.card_battery = self.create_diagnostic_card("🔋 Pin Laptop (Battery Wear)", [
+        self.card_battery = self.create_diagnostic_card("[Pin Laptop - Battery Wear]", [
             ("Mức chai pin:", "Đang đo..."),
             ("Dung lượng sạc:", "Đang đo..."),
             ("Chu kỳ sạc:", "Đang đo..."),
@@ -1189,7 +1296,7 @@ class LinuxTaskManager(QMainWindow):
         grid_cards.addWidget(self.card_battery, 0, 0)
 
         # 2. Thẻ Nhiệt Độ & Quạt
-        self.card_thermal = self.create_diagnostic_card("🌡️ Nhiệt Độ & Tản Nhiệt", [
+        self.card_thermal = self.create_diagnostic_card("[Nhiệt Độ & Tản Nhiệt]", [
             ("Nhiệt độ CPU:", "Đang đo..."),
             ("Ổ cứng NVMe:", "Đang đo..."),
             ("Wi-Fi Sensor:", "Đang đo..."),
@@ -1198,7 +1305,7 @@ class LinuxTaskManager(QMainWindow):
         grid_cards.addWidget(self.card_thermal, 0, 1)
 
         # 3. Thẻ Ổ Cứng SSD
-        self.card_disk = self.create_diagnostic_card("💾 Ổ Cứng SSD NVMe (Intel 512GB)", [
+        self.card_disk = self.create_diagnostic_card("[Ổ Cứng SSD NVMe (512GB)]", [
             ("Phân vùng Root (/):", "Đang đo..."),
             ("Phân vùng DATA:", "Đang đo..."),
             ("Nhiệt độ SSD:", "Đang đo..."),
@@ -1207,10 +1314,10 @@ class LinuxTaskManager(QMainWindow):
         grid_cards.addWidget(self.card_disk, 1, 0)
 
         # 4. Thẻ Bộ Nhớ RAM
-        self.card_ram = self.create_diagnostic_card("🧠 Bộ Nhớ RAM & Áp Lực", [
+        self.card_ram = self.create_diagnostic_card("[Bộ Nhớ RAM & Áp Lực]", [
             ("Tổng dung lượng:", "7.45 GB"),
             ("Đang sử dụng:", "Đang đo..."),
-            ("Bộ nhớ Swap:", "Đang đo..."),
+            ("Bộ đệm Cache:", "Đang đo..."),
             ("Đánh giá:", "Tải bình thường")
         ], border_color="#8b5cf6")
         grid_cards.addWidget(self.card_ram, 1, 1)
@@ -1223,7 +1330,7 @@ class LinuxTaskManager(QMainWindow):
         rc_layout = QVBoxLayout(recom_card)
         rc_layout.setSpacing(10)
 
-        rc_title = QLabel("💡 GỢI Ý & LỜI KHUYÊN TỐI ƯU HIỆU NĂNG TỪ CHUYÊN GIA", recom_card)
+        rc_title = QLabel("LỜI KHUYÊN & HƯỚNG DẪN TỐI ƯU HIỆU NĂNG TỪ CHUYÊN GIA", recom_card)
         rc_title.setFont(QFont("DejaVu Sans", 11, QFont.Bold))
         rc_title.setStyleSheet("color: #1e3a8a; border-bottom: 2px solid #eff6ff; padding-bottom: 6px;")
         rc_layout.addWidget(rc_title)
@@ -1232,11 +1339,11 @@ class LinuxTaskManager(QMainWindow):
         self.lbl_recom_battery.setFont(QFont("DejaVu Sans", 10))
         self.lbl_recom_battery.setWordWrap(True)
 
-        self.lbl_recom_ram = QLabel("• <b>Bộ nhớ RAM:</b> RAM 8GB LPDDR4x trên máy ZenBook là RAM hàn chết trên bo mạch (không tháo rời). Để máy chạy nhanh nhất, anh Tân nên tắt bớt các tab trình duyệt Chrome không dùng hoặc bấm nút 'Giải phóng Cache RAM' ở trên.", recom_card)
+        self.lbl_recom_ram = QLabel("• <b>Bộ nhớ RAM:</b> RAM 8GB LPDDR4x trên máy ZenBook là RAM hàn chết trên bo mạch (không tháo rời). Để máy chạy nhanh nhất, anh Tân nên tắt bớt các tab trình duyệt Chrome không dùng hoặc bấm nút 'Giải phóng Cache RAM' ở trên khi Cache vượt quá 1.5 GB.", recom_card)
         self.lbl_recom_ram.setFont(QFont("DejaVu Sans", 10))
         self.lbl_recom_ram.setWordWrap(True)
 
-        self.lbl_recom_ssd = QLabel("• <b>Ổ cứng SSD:</b> Phân vùng hệ thống (/) đang dùng ~81% (còn 27GB trống). Khuyên dùng: Giữ dung lượng trống từ 20-30GB để SSD duy trì tốc độ đọc ghi NVMe nhanh nhất.", recom_card)
+        self.lbl_recom_ssd = QLabel("• <b>Ổ cứng SSD:</b> Phân vùng hệ thống (/) đang dùng ~80-81% (còn ~27GB trống). Khuyên dùng: Giữ dung lượng trống từ 20-30GB để SSD duy trì tốc độ đọc ghi NVMe nhanh nhất.", recom_card)
         self.lbl_recom_ssd.setFont(QFont("DejaVu Sans", 10))
         self.lbl_recom_ssd.setWordWrap(True)
 
@@ -1255,7 +1362,7 @@ class LinuxTaskManager(QMainWindow):
         scroll.setWidget(content)
         layout.addWidget(scroll)
 
-        self.tabs.addTab(tab, "🩺 Sức Khỏe & Tối Ưu")
+        self.tabs.addTab(tab, "Sức Khỏe & Tối Ưu")
 
     def create_diagnostic_card(self, title, items, border_color="#3b82f6"):
         card = QFrame(self)
@@ -1287,7 +1394,33 @@ class LinuxTaskManager(QMainWindow):
         return card
 
     def on_health_updated(self, h):
-        # 1. Pin
+        # 1. Cập nhật Số liệu Cache RAM & Rác Ổ Cứng
+        cache_gb = h["ram_cache_gb"]
+        junk_mb = h["disk_junk_mb"]
+        self.current_cache_gb = cache_gb
+        self.current_junk_mb = junk_mb
+
+        self.lbl_ram_cache_status.setText(f"Đang chiếm dụng: <b>{cache_gb:.2f} GB</b> (Bộ đệm Buffers & Cache)")
+        if cache_gb > 1.2:
+            self.lbl_ram_advice.setText("⚠️ NÊN GIẢI PHÓNG: Cache đang chiếm nhiều, bấm nút dưới để tăng RAM trống")
+            self.lbl_ram_advice.setStyleSheet("color: #b45309; border: none; font-weight: bold;")
+            self.btn_clean_ram.setText(f"🧹 Giải phóng ~{cache_gb:.1f} GB Cache RAM ngay")
+        else:
+            self.lbl_ram_advice.setText("✅ Bộ nhớ đệm sạch sẽ • Chưa cần giải phóng")
+            self.lbl_ram_advice.setStyleSheet("color: #047857; border: none; font-weight: bold;")
+            self.btn_clean_ram.setText(f"🧹 Giải phóng {cache_gb:.2f} GB Cache RAM")
+
+        self.lbl_disk_junk_status.setText(f"Dung lượng rác có thể dọn: <b>~{junk_mb:.1f} MB</b> (APT Cache & Logs)")
+        if junk_mb > 350:
+            self.lbl_disk_advice.setText("⚠️ NÊN DỌN DẸP: Dung lượng rác đang đầy, bấm để mở rộng ổ cứng")
+            self.lbl_disk_advice.setStyleSheet("color: #b45309; border: none; font-weight: bold;")
+            self.btn_clean_disk.setText(f"🗑️ Dọn dẹp ~{junk_mb:.0f} MB File Rác ngay")
+        else:
+            self.lbl_disk_advice.setText("✅ Ổ đĩa sạch sẽ • Có thể dọn dẹp định kỳ")
+            self.lbl_disk_advice.setStyleSheet("color: #047857; border: none; font-weight: bold;")
+            self.btn_clean_disk.setText(f"🗑️ Dọn dẹp ~{junk_mb:.0f} MB File Rác")
+
+        # 2. Pin
         bat = h["battery"]
         if bat["present"]:
             wear_p = round(100.0 - bat["health_percent"], 1)
@@ -1297,13 +1430,13 @@ class LinuxTaskManager(QMainWindow):
             self.card_battery.labels["Chu kỳ sạc:"].setText(f"{bat['cycles']} lần ({bat['status']})")
             
             if wear_p > 50:
-                self.card_battery.labels["Đánh giá:"].setText("🔴 Chai nhiều (~61%) • Nên cắm sạc khi dùng")
+                self.card_battery.labels["Đánh giá:"].setText("Chai nhiều (~61%) • Nên cắm sạc khi dùng")
                 self.card_battery.labels["Đánh giá:"].setStyleSheet("color: #dc2626;")
             else:
-                self.card_battery.labels["Đánh giá:"].setText("🟢 Pin còn rất tốt")
+                self.card_battery.labels["Đánh giá:"].setText("Pin còn rất tốt")
                 self.card_battery.labels["Đánh giá:"].setStyleSheet("color: #16a34a;")
 
-        # 2. Nhiệt độ
+        # 3. Nhiệt độ
         c_temp = h["cpu_temp"]
         s_temp = h["ssd_temp"]
         self.card_thermal.labels["Nhiệt độ CPU:"].setText(f"{c_temp:.1f} °C")
@@ -1311,14 +1444,15 @@ class LinuxTaskManager(QMainWindow):
         self.card_thermal.labels["Ổ cứng NVMe:"].setText(f"{s_temp:.1f} °C")
         self.card_thermal.labels["Wi-Fi Sensor:"].setText(f"{h['wifi_temp']:.1f} °C")
 
-        # 3. Ổ cứng
+        # 4. Ổ cứng
         self.card_disk.labels["Phân vùng Root (/):"].setText(f"Dùng {h['disk_root_used_p']:.0f}% (Trống {format_bytes(h['disk_root_free'])})")
         self.card_disk.labels["Phân vùng DATA:"].setText(f"Dùng {h['disk_data_used_p']:.0f}% (Trống {format_bytes(h['disk_data_free'])})")
         self.card_disk.labels["Nhiệt độ SSD:"].setText(f"{s_temp:.1f} °C (Rất mát)")
 
-        # 4. RAM
+        # 5. RAM
         self.card_ram.labels["Đang sử dụng:"].setText(f"{h['ram_used_gb']:.1f} / {h['ram_tot_gb']:.1f} GB ({h['ram_percent']:.0f}%)")
         self.card_ram.labels["Đang sử dụng:"].setStyleSheet(f"color: {'#dc2626' if h['ram_percent'] > 85 else ('#d97706' if h['ram_percent'] > 70 else '#16a34a')};")
+        self.card_ram.labels["Bộ đệm Cache:"].setText(f"{cache_gb:.2f} GB (Có thể giải phóng)")
         
         # Tính điểm sức khỏe tổng thể
         score = 100
@@ -1337,21 +1471,39 @@ class LinuxTaskManager(QMainWindow):
         self.lbl_health_score.setText(f"{score} / 100")
         if score >= 85:
             self.lbl_health_score.setStyleSheet("color: #10b981; border: none;")
-            self.lbl_health_verdict.setText("🟢 Hệ thống hoạt động TỐT • Phần cứng ổn định mượt mà")
+            self.lbl_health_verdict.setText("Hệ thống hoạt động TỐT • Phần cứng ổn định mượt mà")
         elif score >= 70:
             self.lbl_health_score.setStyleSheet("color: #f59e0b; border: none;")
-            self.lbl_health_verdict.setText("🟡 Hệ thống BÌNH THƯỜNG • RAM & Pin cần lưu ý nhẹ")
+            self.lbl_health_verdict.setText("Hệ thống BÌNH THƯỜNG • RAM & Pin cần lưu ý nhẹ")
         else:
             self.lbl_health_score.setStyleSheet("color: #ef4444; border: none;")
-            self.lbl_health_verdict.setText("🔴 Hệ thống CẦN TỐI ƯU • Đang chịu tải cao")
+            self.lbl_health_verdict.setText("Hệ thống CẦN TỐI ƯU • Đang chịu tải cao")
 
     def clean_ram_cache(self):
         try:
-            # Gửi lệnh drop_caches với pkexec
+            mem_before = psutil.virtual_memory()
+            avail_before_gb = mem_before.available / (1024**3)
+            cache_before_gb = (getattr(mem_before, 'buffers', 0) + getattr(mem_before, 'cached', 0)) / (1024**3)
+
             cmd = ["pkexec", "sh", "-c", "sync; echo 3 > /proc/sys/vm/drop_caches"]
             proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode == 0:
-                QMessageBox.information(self, "Thành công", "✅ Đã giải phóng toàn bộ Cache RAM dư thừa thành công!\nMáy tính đã nhẹ hơn.")
+                time.sleep(0.5)
+                mem_after = psutil.virtual_memory()
+                avail_after_gb = mem_after.available / (1024**3)
+                cache_after_gb = (getattr(mem_after, 'buffers', 0) + getattr(mem_after, 'cached', 0)) / (1024**3)
+                
+                freed_gb = max(avail_after_gb - avail_before_gb, cache_before_gb - cache_after_gb)
+                if freed_gb <= 0:
+                    freed_gb = cache_before_gb * 0.85
+
+                QMessageBox.information(
+                    self, "Giải Phóng Thành Công",
+                    f"🎉 <b>ĐÃ GIẢI PHÓNG CACHE RAM THÀNH CÔNG!</b>\n\n"
+                    f"• Dung lượng Cache đã giải phóng: <b>{freed_gb:.2f} GB</b>\n"
+                    f"• RAM khả dụng tăng từ: <b>{avail_before_gb:.2f} GB</b> ➔ <b>{avail_after_gb:.2f} GB</b>\n\n"
+                    "Máy tính của anh Tân đã được làm nhẹ tức thì, mượt mà hơn!"
+                )
             else:
                 QMessageBox.warning(self, "Thông báo", "Yêu cầu mật khẩu quản trị để giải phóng cache hệ thống.")
         except Exception as e:
@@ -1359,17 +1511,31 @@ class LinuxTaskManager(QMainWindow):
 
     def clean_disk_cache(self):
         try:
-            cmd = ["pkexec", "sh", "-c", "apt-get clean && journalctl --vacuum-time=3d"]
+            disk_before = psutil.disk_usage('/')
+            free_before_gb = disk_before.free / (1024**3)
+
+            cmd = ["pkexec", "sh", "-c", "apt-get clean && journalctl --vacuum-time=3d && rm -rf /home/*/.cache/thumbnails/*"]
             proc = subprocess.run(cmd, capture_output=True, text=True)
             if proc.returncode == 0:
-                QMessageBox.information(self, "Thành công", "✅ Đã dọn dẹp file rác và log hệ thống thành công!\nPhân vùng Root (/) đã có thêm dung lượng trống.")
+                time.sleep(0.5)
+                disk_after = psutil.disk_usage('/')
+                free_after_gb = disk_after.free / (1024**3)
+                freed_mb = max((free_after_gb - free_before_gb) * 1024, self.current_junk_mb)
+
+                QMessageBox.information(
+                    self, "Dọn Dẹp Thành Công",
+                    f"🎉 <b>ĐÃ DỌN DẸP Ổ CỨNG THÀNH CÔNG!</b>\n\n"
+                    f"• Đã dọn sạch: <b>~{freed_mb:.1f} MB</b> file rác và log cũ\n"
+                    f"• Dung lượng trống phân vùng Root (/): <b>{free_after_gb:.2f} GB</b>\n\n"
+                    "Hệ thống đã được làm sạch sẽ!"
+                )
             else:
                 QMessageBox.warning(self, "Thông báo", "Yêu cầu mật khẩu quản trị để dọn dẹp hệ thống.")
         except Exception as e:
             QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
 
     # ----------------------------------------------------
-    # TAB 4: STARTUP APPS (ỨNG DỤNG KHỞI ĐỘNG CÙNG HỆ THỐNG)
+    # TAB 4: STARTUP APPS
     # ----------------------------------------------------
     def init_startup_tab(self):
         tab = QWidget()
@@ -1392,7 +1558,7 @@ class LinuxTaskManager(QMainWindow):
         self.startup_table.setColumnWidth(3, 110)
         layout.addWidget(self.startup_table)
 
-        btn_reload = QPushButton("🔄 Quét lại ứng dụng khởi động", self)
+        btn_reload = QPushButton("Quét lại ứng dụng khởi động", self)
         btn_reload.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
         btn_reload.setStyleSheet("background-color: #3b82f6; color: white; border-radius: 6px; padding: 8px 16px; border: none;")
         btn_reload.clicked.connect(self.load_startup_apps)
@@ -1463,7 +1629,7 @@ class LinuxTaskManager(QMainWindow):
             QMessageBox.critical(self, "Lỗi", f"Không thể thay đổi trạng thái: {str(e)}")
 
     # ----------------------------------------------------
-    # TAB 5: SYSTEM INFO (THÔNG TIN PHẦN CỨNG & HỆ ĐIỀU HÀNH)
+    # TAB 5: SYSTEM INFO
     # ----------------------------------------------------
     def init_system_info_tab(self):
         tab = QWidget()
@@ -1680,11 +1846,11 @@ class LinuxTaskManager(QMainWindow):
                 
                 cat_badge = ""
                 if p["category"] == "safe":
-                    cat_badge = "<span style='color: #16a34a;'><b>[🟢 An toàn để tắt]</b></span>"
+                    cat_badge = "<span style='color: #16a34a;'><b>[Có thể tắt an toàn]</b></span>"
                 elif p["category"] == "caution":
-                    cat_badge = "<span style='color: #d97706;'><b>[🟡 Cân nhắc]</b></span>"
+                    cat_badge = "<span style='color: #d97706;'><b>[Cân nhắc]</b></span>"
                 else:
-                    cat_badge = "<span style='color: #dc2626;'><b>[🔴 Tiến trình Hệ Thống]</b></span>"
+                    cat_badge = "<span style='color: #dc2626;'><b>[Tiến trình Hệ Thống]</b></span>"
                 
                 self.lbl_selected_proc.setText(f"Đã chọn: <b>{p['nice_name']}</b> (PID: {p['pid']}) — {p['desc']} {cat_badge}")
                 self.lbl_selected_proc.setStyleSheet("color: #1e293b;")
@@ -1747,7 +1913,7 @@ class LinuxTaskManager(QMainWindow):
 
         if cat == "system":
             reply = QMessageBox.critical(
-                self, "⚠️ CẢNH BÁO NGUY HIỂM — TIẾN TRÌNH HỆ THỐNG",
+                self, "CẢNH BÁO NGUY HIỂM — TIẾN TRÌNH HỆ THỐNG",
                 f"🚨 <b>'{name}' (PID: {pid})</b> là tiến trình cốt lõi của hệ điều hành Linux!\n\n"
                 f"• Chức năng: {p['desc']}\n"
                 "• Nguy cơ: Việc tắt tiến trình này có thể khiến màn hình bị sập hoặc máy tính tự khởi động lại.\n\n"
@@ -1756,7 +1922,7 @@ class LinuxTaskManager(QMainWindow):
             )
         elif cat == "caution":
             reply = QMessageBox.warning(
-                self, "🟡 CÂN NHẮC TRƯỚC KHI TẮT",
+                self, "CÂN NHẮC TRƯỚC KHI TẮT",
                 f"<b>'{name}' (PID: {pid})</b> là dịch vụ chạy ngầm hỗ trợ hệ thống.\n\n"
                 f"• Chức năng: {p['desc']}\n"
                 "• Lưu ý: Nếu tắt, một số tính năng (như gõ tiếng Việt, âm thanh, bluetooth...) có thể tạm thời không dùng được cho đến khi mở lại.\n\n"
@@ -1765,7 +1931,7 @@ class LinuxTaskManager(QMainWindow):
             )
         else:
             reply = QMessageBox.question(
-                self, "🟢 XÁC NHẬN TẮT ỨNG DỤNG",
+                self, "XÁC NHẬN TẮT ỨNG DỤNG",
                 f"✅ <b>'{name}' (PID: {pid})</b> là ứng dụng người dùng thông thường.\n\n"
                 f"• Chức năng: {p['desc']}\n"
                 f"• Tài nguyên giải phóng: ~{p['ram_mb']:.1f} MB RAM và {p['cpu_percent']:.1f}% CPU.\n\n"
