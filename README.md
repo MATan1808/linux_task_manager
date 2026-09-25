@@ -21,7 +21,13 @@
      - **Mạng (Network)**: Tốc độ tải xuống (Download) và tải lên (Upload).
      - **Card Đồ Họa (GPU)**: Thông tin GPU Intel Iris Xe / Nvidia / AMD.
 
-3. **🚀 Quản Lý Khởi Động (Startup Apps)**:
+3. **🏥 Sức Khỏe Phần Cứng & Trung Tâm Tối Ưu 1-Click (AIaC Boost)**:
+   - **Đo sức khỏe toàn diện**: Điểm số sức khỏe phần cứng (/100), độ chai pin laptop (Battery Wear %), nhiệt độ CPU/NVMe/Wi-Fi, áp lực RAM và ổ SSD.
+   - **⚡ Giải phóng Cache RAM (1-Click)**: Tự động thu hồi bộ đệm buffers/cache, trả lại dung lượng RAM thực sự cho ứng dụng mà **không cần nhập mật khẩu sudo**.
+   - **🗑️ Dọn dẹp File Rác (1-Click)**: Quét và dọn sạch APT cache, thumbnails, Google Chrome browser cache, user logs và rác hệ thống tức thì.
+   - **🔥 AIaC Boost (Chống Lag ASUS ZenBook)**: Thiết lập Swappiness = 10 (ưu tiên 8GB RAM vật lý, chống nghẽn I/O ổ cứng), dừng các dịch vụ ngầm nặng (như Waydroid container) và dọn sạch RAM chỉ bằng 1 cú nhấp chuột.
+
+4. **🚀 Quản Lý Khởi Động (Startup Apps)**:
    - Liệt kê các ứng dụng tự động chạy khi khởi động Linux.
    - Bật / Tắt trạng thái khởi động với 1-click.
 
