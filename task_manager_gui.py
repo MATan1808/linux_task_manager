@@ -35,7 +35,8 @@ try:
         QSortFilterProxyModel, QRegExp
     )
     from PyQt5.QtGui import (
-        QFont, QColor, QPainter, QPen, QBrush, QLinearGradient, QCursor
+        QFont, QColor, QPainter, QPen, QBrush, QLinearGradient, QCursor,
+        QPainterPath
     )
 except ImportError:
     print("Yêu cầu thư viện PyQt5: sudo apt install -y python3-pyqt5")
@@ -99,6 +100,12 @@ KNOWN_PROCESS_INFO = {
     "gpg-agent": ("Bảo mật GPG", "Quản lý mật khẩu mã hóa", "caution"),
     "flameshot": ("Chụp màn hình Flameshot", "Phần mềm chụp ảnh màn hình", "caution"),
     "headroom": ("Headroom AI Proxy", "Dịch vụ proxy AI 9Router (Tốn CPU & RAM, có thể tắt)", "safe"),
+    "claude-desktop": ("Claude Desktop", "Ứng dụng AI Claude Desktop (Electron, tốn RAM)", "safe"),
+    "claude": ("Claude Code CLI", "Công cụ dòng lệnh AI Claude Code", "safe"),
+    "chrome-devtools": ("Chrome DevTools MCP", "Dịch vụ điều khiển Chrome DevTools", "safe"),
+    "npm": ("NPM Package Manager", "Trình quản lý gói Node.js (đang chạy script)", "safe"),
+    "next-server": ("Next.js Server", "Máy chủ web ứng dụng Next.js", "safe"),
+    "waydroid": ("Waydroid Android", "Giả lập Android trên Linux (Tốn RAM & CPU)", "safe"),
     "containerd-shim": ("Docker Container Shim", "Tiến trình quản lý container Docker", "caution"),
     "dockerd": ("Docker Engine", "Dịch vụ quản lý container Docker", "caution"),
     "docker-proxy": ("Docker Proxy", "Proxy chuyển tiếp cổng Docker", "caution"),
@@ -310,15 +317,22 @@ def get_cache_and_junk_info():
         except Exception:
             pass
 
-    # Browser Cache (Chrome)
+    # Browser Cache (Chrome) — ước tính nhanh, không walk sâu toàn bộ
     chrome_cache_size = 0
     for p in glob.glob(os.path.expanduser('~/.cache/google-chrome/*/Cache')):
-        if os.path.exists(p):
+        if os.path.isdir(p):
             try:
-                for root, dirs, files in os.walk(p):
-                    for f in files:
-                        chrome_cache_size += os.path.getsize(os.path.join(root, f))
-            except Exception:
+                for entry in os.scandir(p):
+                    if entry.is_file(follow_symlinks=False):
+                        chrome_cache_size += entry.stat(follow_symlinks=False).st_size
+                    elif entry.is_dir(follow_symlinks=False):
+                        try:
+                            for sub in os.scandir(entry.path):
+                                if sub.is_file(follow_symlinks=False):
+                                    chrome_cache_size += sub.stat(follow_symlinks=False).st_size
+                        except (PermissionError, OSError):
+                            pass
+            except (PermissionError, OSError):
                 pass
 
     # Journal logs (ước tính)
@@ -529,6 +543,22 @@ class ProcessFilterProxyModel(QSortFilterProxyModel):
 
 
 # --- WIDGET VẼ BIỂU ĐỒ SÓNG HIỆU NĂNG THỜI GIAN THỰC ---
+class WorkerThread(QThread):
+    """Generic worker thread chạy tác vụ nặng không block UI"""
+    finished = pyqtSignal(object)
+
+    def __init__(self, func, parent=None):
+        super().__init__(parent)
+        self.func = func
+
+    def run(self):
+        try:
+            result = self.func()
+            self.finished.emit(result)
+        except Exception as e:
+            self.finished.emit({"error": str(e)})
+
+
 class RealTimeGraphWidget(QWidget):
     def __init__(self, color_hex="#3b82f6", max_val=100.0, unit="%", parent=None):
         super().__init__(parent)
@@ -586,7 +616,6 @@ class RealTimeGraphWidget(QWidget):
             painter.setBrush(QBrush(grad))
             painter.setPen(Qt.NoPen)
 
-            from PyQt5.QtGui import QPainterPath
             path = QPainterPath()
             path.moveTo(0, h)
             path.lineTo(points[0])
@@ -623,6 +652,10 @@ class SystemMonitorThread(QThread):
         self.last_disk = psutil.disk_io_counters()
         self.last_time = time.time()
         self.user_cache = {}
+        self._iteration = 0
+        self._cached_bat_diag = get_battery_diagnostics()
+        self._cached_temp_diag = get_temperatures_diagnostics()
+        self._cached_cj_info = get_cache_and_junk_info()
 
     def set_interval(self, sec):
         self.interval = max(sec, 0.2)
@@ -663,10 +696,15 @@ class SystemMonitorThread(QThread):
                 self.last_net = curr_net
                 self.last_time = curr_time
 
-                # 5. Diagnostics
-                bat_diag = get_battery_diagnostics()
-                temp_diag = get_temperatures_diagnostics()
-                cj_info = get_cache_and_junk_info()
+                # 5. Diagnostics (mỗi 10 giây mới quét lại, tránh lãng phí I/O)
+                self._iteration += 1
+                if self._iteration % 10 == 1:
+                    self._cached_bat_diag = get_battery_diagnostics()
+                    self._cached_temp_diag = get_temperatures_diagnostics()
+                    self._cached_cj_info = get_cache_and_junk_info()
+                bat_diag = self._cached_bat_diag
+                temp_diag = self._cached_temp_diag
+                cj_info = self._cached_cj_info
 
                 disk_root = psutil.disk_usage('/')
                 disk_data = psutil.disk_usage('/media/tanma/DATA') if os.path.exists('/media/tanma/DATA') else None
@@ -908,11 +946,53 @@ class LinuxTaskManager(QMainWindow):
         """)
         self.btn_top.clicked.connect(self.toggle_always_on_top)
 
+        # Nút Kill Lag nhanh trên header
+        self.btn_header_kill_lag = QPushButton("🔪 Kill Lag", self)
+        self.btn_header_kill_lag.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
+        self.btn_header_kill_lag.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_header_kill_lag.setToolTip("Quét & diệt nhanh tiến trình ngốn CPU/RAM gây lag")
+        self.btn_header_kill_lag.setStyleSheet("""
+            QPushButton { background-color: #dc2626; color: #ffffff; border-radius: 6px; padding: 6px 12px; border: none; font-weight: bold; }
+            QPushButton:hover { background-color: #b91c1c; }
+        """)
+        self.btn_header_kill_lag.clicked.connect(self.kill_lag_processes)
+
         top_header_layout.addWidget(lbl_speed)
         top_header_layout.addWidget(self.combo_speed)
+        top_header_layout.addWidget(self.btn_header_kill_lag)
         top_header_layout.addWidget(self.btn_top)
 
         main_layout.addWidget(top_header)
+
+        # ==========================================
+        # BANNER CẢNH BÁO LAG TỰ ĐỘNG
+        # ==========================================
+        self.lag_warning_banner = QFrame(self)
+        self.lag_warning_banner.setStyleSheet(
+            "background-color: #fef2f2; border: 1.5px solid #fecaca; border-radius: 8px; padding: 6px 14px;"
+        )
+        lag_banner_layout = QHBoxLayout(self.lag_warning_banner)
+        lag_banner_layout.setContentsMargins(6, 4, 6, 4)
+        self.lbl_lag_warning = QLabel(
+            "⚠️ <b>CẢNH BÁO:</b> Hệ thống đang quá tải! Nhấn <b>Kill Lag</b> để giải phóng ngay.",
+            self
+        )
+        self.lbl_lag_warning.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
+        self.lbl_lag_warning.setStyleSheet("color: #991b1b; border: none;")
+        lag_banner_layout.addWidget(self.lbl_lag_warning)
+
+        btn_banner_kill = QPushButton("🔪 Kill Lag Ngay", self)
+        btn_banner_kill.setFont(QFont("DejaVu Sans", 9, QFont.Bold))
+        btn_banner_kill.setCursor(QCursor(Qt.PointingHandCursor))
+        btn_banner_kill.setStyleSheet(
+            "QPushButton { background-color: #dc2626; color: white; border-radius: 6px; padding: 5px 12px; border: none; }"
+            "QPushButton:hover { background-color: #b91c1c; }"
+        )
+        btn_banner_kill.clicked.connect(self.kill_lag_processes)
+        lag_banner_layout.addWidget(btn_banner_kill)
+
+        self.lag_warning_banner.setVisible(False)
+        main_layout.addWidget(self.lag_warning_banner)
 
         # ==========================================
         # MAIN TAB WIDGET
@@ -1576,57 +1656,81 @@ class LinuxTaskManager(QMainWindow):
         return False, res.stderr or fallback.stderr
 
     def clean_ram_cache(self):
-        try:
-            mem_before = psutil.virtual_memory()
-            avail_before_gb = mem_before.available / (1024**3)
-            cache_before_gb = (getattr(mem_before, 'buffers', 0) + getattr(mem_before, 'cached', 0)) / (1024**3)
+        self.btn_clean_ram.setEnabled(False)
+        self.btn_clean_ram.setText("⏳ Đang giải phóng RAM...")
 
+        mem_before = psutil.virtual_memory()
+        avail_before_gb = mem_before.available / (1024**3)
+        cache_before_gb = (getattr(mem_before, 'buffers', 0) + getattr(mem_before, 'cached', 0)) / (1024**3)
+
+        def do_clean():
             ok, out = self._run_aiac_tool("ram")
-            if ok:
-                time.sleep(0.5)
-                mem_after = psutil.virtual_memory()
-                avail_after_gb = mem_after.available / (1024**3)
-                cache_after_gb = (getattr(mem_after, 'buffers', 0) + getattr(mem_after, 'cached', 0)) / (1024**3)
+            time.sleep(0.5)
+            mem_after = psutil.virtual_memory()
+            avail_after_gb = mem_after.available / (1024**3)
+            cache_after_gb = (getattr(mem_after, 'buffers', 0) + getattr(mem_after, 'cached', 0)) / (1024**3)
+            freed_gb = max(avail_after_gb - avail_before_gb, cache_before_gb - cache_after_gb)
+            if freed_gb <= 0:
+                freed_gb = cache_before_gb * 0.85
+            return {"ok": ok, "out": out, "freed_gb": freed_gb, "avail_before": avail_before_gb, "avail_after": avail_after_gb}
 
-                freed_gb = max(avail_after_gb - avail_before_gb, cache_before_gb - cache_after_gb)
-                if freed_gb <= 0:
-                    freed_gb = cache_before_gb * 0.85
-
+        def on_done(result):
+            self.btn_clean_ram.setEnabled(True)
+            self.btn_clean_ram.setText("⚡ Giải phóng Cache RAM (1-Click)")
+            if isinstance(result, dict) and result.get("error"):
+                QMessageBox.critical(self, "Lỗi", f"Lỗi: {result['error']}")
+                return
+            if result["ok"]:
                 QMessageBox.information(
                     self, "Giải Phóng Thành Công",
                     f"🎉 <b>ĐÃ GIẢI PHÓNG CACHE RAM THÀNH CÔNG (1-CLICK)!</b>\n\n"
-                    f"• Dung lượng Cache đã giải phóng: <b>{freed_gb:.2f} GB</b>\n"
-                    f"• RAM khả dụng tăng từ: <b>{avail_before_gb:.2f} GB</b> ➔ <b>{avail_after_gb:.2f} GB</b>\n\n"
+                    f"• Dung lượng Cache đã giải phóng: <b>{result['freed_gb']:.2f} GB</b>\n"
+                    f"• RAM khả dụng tăng từ: <b>{result['avail_before']:.2f} GB</b> ➔ <b>{result['avail_after']:.2f} GB</b>\n\n"
                     "Bộ đệm hệ thống đã được làm sạch, không cần nhập mật khẩu!"
                 )
             else:
-                QMessageBox.warning(self, "Thông báo", f"Không thể giải phóng: {out}")
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
+                QMessageBox.warning(self, "Thông báo", f"Không thể giải phóng: {result['out']}")
+
+        self._worker_ram = WorkerThread(do_clean, self)
+        self._worker_ram.finished.connect(on_done)
+        self._worker_ram.start()
 
     def clean_disk_cache(self):
-        try:
-            disk_before = psutil.disk_usage('/')
-            free_before_gb = disk_before.free / (1024**3)
+        self.btn_clean_disk.setEnabled(False)
+        self.btn_clean_disk.setText("⏳ Đang dọn dẹp ổ cứng...")
 
+        disk_before = psutil.disk_usage('/')
+        free_before_gb = disk_before.free / (1024**3)
+        junk_mb = self.current_junk_mb
+
+        def do_clean():
             ok, out = self._run_aiac_tool("disk")
-            if ok:
-                time.sleep(0.5)
-                disk_after = psutil.disk_usage('/')
-                free_after_gb = disk_after.free / (1024**3)
-                freed_mb = max((free_after_gb - free_before_gb) * 1024, self.current_junk_mb)
+            time.sleep(0.5)
+            disk_after = psutil.disk_usage('/')
+            free_after_gb = disk_after.free / (1024**3)
+            freed_mb = max((free_after_gb - free_before_gb) * 1024, junk_mb)
+            return {"ok": ok, "out": out, "freed_mb": freed_mb, "free_after_gb": free_after_gb}
 
+        def on_done(result):
+            self.btn_clean_disk.setEnabled(True)
+            self.btn_clean_disk.setText("🗑️ Dọn dẹp File Rác (1-Click)")
+            if isinstance(result, dict) and result.get("error"):
+                QMessageBox.critical(self, "Lỗi", f"Lỗi: {result['error']}")
+                return
+            if result["ok"]:
                 QMessageBox.information(
                     self, "Dọn Dẹp Thành Công",
                     f"🎉 <b>ĐÃ DỌN DẸP Ổ CỨNG THÀNH CÔNG (1-CLICK)!</b>\n\n"
-                    f"• Đã dọn sạch: <b>~{freed_mb:.1f} MB</b> file rác, logs & cache Chrome\n"
-                    f"• Dung lượng trống phân vùng Root (/): <b>{free_after_gb:.2f} GB</b>\n\n"
+                    f"• Đã dọn sạch: <b>~{result['freed_mb']:.1f} MB</b> file rác, logs & cache Chrome\n"
+                    f"• Dung lượng trống phân vùng Root (/): <b>{result['free_after_gb']:.2f} GB</b>\n\n"
                     "Ổ cứng hệ thống đã được làm sạch sẽ an toàn!"
                 )
             else:
-                QMessageBox.warning(self, "Thông báo", f"Không thể dọn dẹp: {out}")
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
+                QMessageBox.warning(self, "Thông báo", f"Không thể dọn dẹp: {result['out']}")
+
+        self._worker_disk = WorkerThread(do_clean, self)
+        self._worker_disk.finished.connect(on_done)
+        self._worker_disk.start()
 
     def boost_system_performance(self):
         try:
@@ -1655,9 +1759,13 @@ class LinuxTaskManager(QMainWindow):
             QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
 
     def kill_lag_processes(self):
-        """Quét & kill các tiến trình ngốn CPU/RAM gây lag hệ thống"""
-        try:
-            # Danh sách tiến trình KHÔNG ĐƯỢC KILL (hệ thống, desktop, task manager)
+        """Quét & kill các tiến trình ngốn CPU/RAM gây lag hệ thống (non-blocking)"""
+        self.btn_kill_lag.setEnabled(False)
+        self.btn_kill_lag.setText("⏳ Đang quét & diệt tiến trình lag...")
+        self.btn_header_kill_lag.setEnabled(False)
+        self.btn_header_kill_lag.setText("⏳ Đang diệt...")
+
+        def do_kill():
             PROTECTED = {
                 "systemd", "Xorg", "cinnamon", "muffin", "lightdm", "dbus-daemon",
                 "polkitd", "NetworkManager", "wpa_supplicant", "systemd-journald",
@@ -1666,22 +1774,16 @@ class LinuxTaskManager(QMainWindow):
                 "ibus-daemon", "ibus-extension", "ibus-ui-gtk3",
                 "cron", "rsyslogd", "avahi-daemon", "ssh-agent", "gpg-agent",
                 "login", "bash", "sh", "sudo", "containerd",
-                "task_manager", "task_manager_gui",  # chính app này
+                "task_manager", "task_manager_gui",
             }
-
-            # Danh sách dịch vụ nền nặng nên kill/stop (không phải app đang dùng)
             HEAVY_SERVICES_KILL = {"headroom", "waydroid"}
             DOCKER_DEMO_CONTAINERS = ["demo-17-db", "demo-19-db", "demo-17-pg-ui", "demo-19-pg-ui"]
 
             killed = []
-            skipped_protected = []
-            errors = []
             ram_before = psutil.virtual_memory().available / (1024**3)
-
             my_pid = os.getpid()
-            current_user = os.environ.get("USER", "tanma")
 
-            # 1. Stop Headroom service nếu đang chạy
+            # 1. Stop Headroom service
             try:
                 res = subprocess.run(
                     ["systemctl", "--user", "is-active", "headroom.service"],
@@ -1708,8 +1810,7 @@ class LinuxTaskManager(QMainWindow):
                 except Exception:
                     pass
 
-            # 3. Quét tiến trình user ngốn CPU > 15% hoặc RAM > 500MB
-            # Warm up CPU percent (lần đầu luôn trả 0.0)
+            # 3. Quét tiến trình ngốn CPU > 15% hoặc RAM > 500MB
             for p in psutil.process_iter(['cpu_percent']):
                 pass
             time.sleep(0.5)
@@ -1720,15 +1821,13 @@ class LinuxTaskManager(QMainWindow):
                     name = (info['name'] or "").lower()
                     user = info['username'] or ""
 
-                    # Bỏ qua chính mình và process hệ thống
                     if pid == my_pid or pid <= 10:
                         continue
                     if user == "root" and name not in HEAVY_SERVICES_KILL:
                         continue
                     if name in PROTECTED:
                         continue
-                    # Bảo vệ claude-desktop (app đang chạy) — chỉ kill renderer thừa
-                    if "claude" in name and "renderer" not in (proc.cmdline() or [""]):
+                    if "claude" in name and "renderer" not in " ".join(proc.cmdline() or [""]):
                         continue
 
                     cpu = info.get('cpu_percent', 0) or 0
@@ -1740,33 +1839,40 @@ class LinuxTaskManager(QMainWindow):
                     if not (is_heavy or is_heavy_service):
                         continue
 
-                    # Chrome renderer — kill tab ngốn, giữ main process
                     if "chrome" in name:
                         cmdline = " ".join(proc.cmdline() or [])
                         if "--type=renderer" not in cmdline:
-                            continue  # giữ chrome main, gpu, broker
+                            continue
                         if rss_mb < 300 and cpu < 15:
-                            continue  # tab nhẹ, giữ lại
+                            continue
 
-                    # Kill process
                     proc.kill()
-                    label = f"{info['name']} (PID {pid}) — CPU: {cpu:.0f}%, RAM: {rss_mb:.0f}MB"
-                    killed.append(label)
+                    killed.append(f"{info['name']} (PID {pid}) — CPU: {cpu:.0f}%, RAM: {rss_mb:.0f}MB")
 
                 except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
                     pass
-                except Exception as ex:
-                    errors.append(str(ex))
+                except Exception:
+                    pass
 
-            # 4. Dọn RAM cache sau khi kill
+            # 4. Dọn RAM cache
             self._run_aiac_tool("ram")
             time.sleep(1)
 
             ram_after = psutil.virtual_memory().available / (1024**3)
             ram_freed = max(ram_after - ram_before, 0)
             load_avg = os.getloadavg()
+            return {"killed": killed, "ram_freed": ram_freed, "ram_after": ram_after, "load_avg": load_avg}
 
-            # Hiển thị kết quả
+        def on_done(result):
+            self.btn_kill_lag.setEnabled(True)
+            self.btn_kill_lag.setText("🔪 Diệt Ngay Tiến Trình Gây Lag")
+            self.btn_header_kill_lag.setEnabled(True)
+            self.btn_header_kill_lag.setText("🔪 Kill Lag")
+            if isinstance(result, dict) and result.get("error"):
+                QMessageBox.critical(self, "Lỗi Kill Lag", f"Lỗi: {result['error']}")
+                return
+
+            killed = result["killed"]
             if killed:
                 kill_list = "\n".join(f"  • {k}" for k in killed[:15])
                 extra = f"\n  ... và {len(killed)-15} tiến trình khác" if len(killed) > 15 else ""
@@ -1774,21 +1880,23 @@ class LinuxTaskManager(QMainWindow):
                     self, "🔪 Kill Lag Thành Công",
                     f"🔪 <b>ĐÃ DIỆT {len(killed)} TIẾN TRÌNH GÂY LAG!</b>\n\n"
                     f"<b>Đã kill:</b>\n{kill_list}{extra}\n\n"
-                    f"• <b>RAM giải phóng:</b> ~{ram_freed:.2f} GB\n"
-                    f"• <b>RAM khả dụng:</b> {ram_after:.2f} GB\n"
-                    f"• <b>Load Average:</b> {load_avg[0]:.2f} (trước đó cao hơn)\n\n"
+                    f"• <b>RAM giải phóng:</b> ~{result['ram_freed']:.2f} GB\n"
+                    f"• <b>RAM khả dụng:</b> {result['ram_after']:.2f} GB\n"
+                    f"• <b>Load Average:</b> {result['load_avg'][0]:.2f} (trước đó cao hơn)\n\n"
                     "Máy đã nhẹ hơn rồi! 🚀"
                 )
             else:
                 QMessageBox.information(
                     self, "Kill Lag",
                     "✅ <b>Không phát hiện tiến trình nào gây lag!</b>\n\n"
-                    f"• Load Average: {load_avg[0]:.2f}\n"
-                    f"• RAM khả dụng: {ram_after:.2f} GB\n\n"
+                    f"• Load Average: {result['load_avg'][0]:.2f}\n"
+                    f"• RAM khả dụng: {result['ram_after']:.2f} GB\n\n"
                     "Hệ thống đang hoạt động ổn định."
                 )
-        except Exception as e:
-            QMessageBox.critical(self, "Lỗi Kill Lag", f"Lỗi: {str(e)}")
+
+        self._worker_kill = WorkerThread(do_kill, self)
+        self._worker_kill.finished.connect(on_done)
+        self._worker_kill.start()
 
     # ----------------------------------------------------
     # TAB 4: STARTUP APPS
@@ -1987,8 +2095,9 @@ class LinuxTaskManager(QMainWindow):
         ram_p = s["ram_percent"]
         ram_used_gb = s["ram_used"] / (1024**3)
         ram_tot_gb = s["ram_total"] / (1024**3)
+        load_avg = os.getloadavg()
         self.lbl_header_summary.setText(
-            f"CPU: {cpu_p:.1f}% ({s['cpu_freq_ghz']:.2f} GHz) • RAM: {ram_used_gb:.1f}/{ram_tot_gb:.1f} GB ({ram_p:.0f}%) • Uptime: {s['uptime']}"
+            f"CPU: {cpu_p:.1f}% ({s['cpu_freq_ghz']:.2f} GHz) • RAM: {ram_used_gb:.1f}/{ram_tot_gb:.1f} GB ({ram_p:.0f}%) • Load: {load_avg[0]:.1f} • Uptime: {s['uptime']}"
         )
 
         self.perf_buttons[0].lbl_v.setText(f"{cpu_p:.1f}%")
@@ -2004,6 +2113,14 @@ class LinuxTaskManager(QMainWindow):
         tot_net_speed = (s["net_down_speed"] + s["net_up_speed"]) / 1024
         self.perf_buttons[3].lbl_v.setText(f"{tot_net_speed:.1f} KB/s")
         self.perf_buttons[3].lbl_s.setText(f"Tải: {format_bytes(s['net_down_speed'])}/s")
+
+        # Auto-lag detection: hiện banner đỏ khi quá tải
+        is_lagging = load_avg[0] > 4.0 or ram_p > 90.0
+        self.lag_warning_banner.setVisible(is_lagging)
+        if is_lagging:
+            self.lbl_lag_warning.setText(
+                f"⚠️ <b>CẢNH BÁO:</b> Hệ thống đang quá tải! Load: {load_avg[0]:.1f} | RAM: {ram_p:.0f}%. Nhấn <b>Kill Lag</b> để giải phóng ngay."
+            )
 
         if self.selected_perf_tab == 0:
             self.realtime_graph.set_max_val(100.0)
@@ -2212,9 +2329,10 @@ class LinuxTaskManager(QMainWindow):
         except psutil.NoSuchProcess:
             QMessageBox.information(self, "Thông báo", f"Ứng dụng '{name}' (PID: {pid}) đã tự đóng trước đó.")
         except psutil.AccessDenied:
-            cmd = ["pkexec", "kill", "-9" if force else "-15", str(pid)]
+            sig = "-9" if force else "-15"
+            cmd = f"echo 1 | sudo -S kill {sig} {pid}"
             try:
-                proc = subprocess.run(cmd, capture_output=True, text=True)
+                proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=5)
                 if proc.returncode == 0:
                     QMessageBox.information(self, "Thành công", f"Đã kết thúc '{name}' (PID: {pid}) với quyền quản trị root!")
                 else:

@@ -32,7 +32,7 @@
    - Liệt kê các ứng dụng tự động chạy khi khởi động Linux.
    - Bật / Tắt trạng thái khởi động với 1-click.
 
-4. **ℹ️ Chi Tiết Hệ Thống (System Info)**:
+5. **ℹ️ Chi Tiết Hệ Thống (System Info)**:
    - Thông tin chi tiết phần cứng, bản phân phối OS, Kernel, Uptime.
 
 ---
