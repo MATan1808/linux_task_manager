@@ -26,6 +26,7 @@
    - **⚡ Giải phóng Cache RAM (1-Click)**: Tự động thu hồi bộ đệm buffers/cache, trả lại dung lượng RAM thực sự cho ứng dụng mà **không cần nhập mật khẩu sudo**.
    - **🗑️ Dọn dẹp File Rác (1-Click)**: Quét và dọn sạch APT cache, thumbnails, Google Chrome browser cache, user logs và rác hệ thống tức thì.
    - **🔥 AIaC Boost (Chống Lag ASUS ZenBook)**: Thiết lập Swappiness = 10 (ưu tiên 8GB RAM vật lý, chống nghẽn I/O ổ cứng), dừng các dịch vụ ngầm nặng (như Waydroid container) và dọn sạch RAM chỉ bằng 1 cú nhấp chuột.
+   - **🔪 Kill Lag (Diệt Tiến Trình Lag)**: Tự động quét và kill các tiến trình ngốn CPU > 15% hoặc RAM > 500MB gây lag máy. Bao gồm: kill Chrome tabs nặng (giữ main process), stop Headroom AI service, stop Docker demo containers, sau đó dọn RAM cache. Hiển thị báo cáo chi tiết số tiến trình đã diệt và RAM giải phóng.
 
 4. **🚀 Quản Lý Khởi Động (Startup Apps)**:
    - Liệt kê các ứng dụng tự động chạy khi khởi động Linux.

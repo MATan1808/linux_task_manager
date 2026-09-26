@@ -98,6 +98,10 @@ KNOWN_PROCESS_INFO = {
     "ssh-agent": ("Bảo mật SSH Key", "Quản lý chìa khóa đăng nhập SSH", "caution"),
     "gpg-agent": ("Bảo mật GPG", "Quản lý mật khẩu mã hóa", "caution"),
     "flameshot": ("Chụp màn hình Flameshot", "Phần mềm chụp ảnh màn hình", "caution"),
+    "headroom": ("Headroom AI Proxy", "Dịch vụ proxy AI 9Router (Tốn CPU & RAM, có thể tắt)", "safe"),
+    "containerd-shim": ("Docker Container Shim", "Tiến trình quản lý container Docker", "caution"),
+    "dockerd": ("Docker Engine", "Dịch vụ quản lý container Docker", "caution"),
+    "docker-proxy": ("Docker Proxy", "Proxy chuyển tiếp cổng Docker", "caution"),
     "copyq": ("Lịch sử Clipboard CopyQ", "Lưu trữ lịch sử Copy/Paste", "caution"),
 
     # Tiến trình Hệ thống cốt lõi (Cấm tắt)
@@ -1221,8 +1225,9 @@ class LinuxTaskManager(QMainWindow):
         opt_title.setStyleSheet("color: #1e3a8a; border-bottom: 2px solid #eff6ff; padding-bottom: 4px;")
         opt_hub_layout.addWidget(opt_title)
 
-        cards_opt_layout = QHBoxLayout()
-        cards_opt_layout.setSpacing(12)
+        cards_opt_grid = QGridLayout()
+        cards_opt_grid.setSpacing(12)
+        cards_opt_layout = cards_opt_grid  # alias for addWidget calls below
 
         # 1. Box Giải phóng Cache RAM
         box_ram_opt = QFrame(opt_hub_frame)
@@ -1255,7 +1260,7 @@ class LinuxTaskManager(QMainWindow):
         b_ram_l.addWidget(self.lbl_ram_cache_status)
         b_ram_l.addWidget(self.lbl_ram_advice)
         b_ram_l.addWidget(self.btn_clean_ram)
-        cards_opt_layout.addWidget(box_ram_opt)
+        cards_opt_grid.addWidget(box_ram_opt, 0, 0)
 
         # 2. Box Dọn dẹp File Rác Ổ Cứng
         box_disk_opt = QFrame(opt_hub_frame)
@@ -1288,7 +1293,7 @@ class LinuxTaskManager(QMainWindow):
         b_disk_l.addWidget(self.lbl_disk_junk_status)
         b_disk_l.addWidget(self.lbl_disk_advice)
         b_disk_l.addWidget(self.btn_clean_disk)
-        cards_opt_layout.addWidget(box_disk_opt)
+        cards_opt_grid.addWidget(box_disk_opt, 0, 1)
 
         # 3. Box Tối Ưu Hệ Thống Toàn Diện & Chống Lag ZenBook (AIaC Boost)
         box_boost_opt = QFrame(opt_hub_frame)
@@ -1321,9 +1326,43 @@ class LinuxTaskManager(QMainWindow):
         b_boost_l.addWidget(self.lbl_boost_status)
         b_boost_l.addWidget(lbl_boost_advice)
         b_boost_l.addWidget(self.btn_boost)
-        cards_opt_layout.addWidget(box_boost_opt)
+        cards_opt_grid.addWidget(box_boost_opt, 1, 0)
 
-        opt_hub_layout.addLayout(cards_opt_layout)
+        # 4. Box KILL LAG — Quét & Kill tiến trình ngốn CPU/RAM gây lag
+        box_kill_lag = QFrame(opt_hub_frame)
+        box_kill_lag.setStyleSheet("background-color: #fef2f2; border: 1px solid #fecaca; border-left: 4px solid #dc2626; border-radius: 6px; padding: 10px;")
+        b_kill_l = QVBoxLayout(box_kill_lag)
+        b_kill_l.setSpacing(4)
+
+        lbl_kill_title = QLabel("🔪 KILL LAG (DIỆT TIẾN TRÌNH LAG)", box_kill_lag)
+        lbl_kill_title.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        lbl_kill_title.setStyleSheet("color: #dc2626; border: none;")
+
+        self.lbl_kill_lag_status = QLabel("Quét & diệt tiến trình ngốn <b>CPU > 15%</b> hoặc <b>RAM > 500MB</b>", box_kill_lag)
+        self.lbl_kill_lag_status.setFont(QFont("DejaVu Sans", 9))
+        self.lbl_kill_lag_status.setStyleSheet("color: #334155; border: none;")
+
+        lbl_kill_advice = QLabel("⚠️ Tự động kill Chrome tabs nặng, Headroom, Docker demo...", box_kill_lag)
+        lbl_kill_advice.setFont(QFont("DejaVu Sans", 9))
+        lbl_kill_advice.setWordWrap(True)
+        lbl_kill_advice.setStyleSheet("color: #991b1b; border: none; font-weight: bold;")
+
+        self.btn_kill_lag = QPushButton("🔪 Diệt Ngay Tiến Trình Gây Lag", box_kill_lag)
+        self.btn_kill_lag.setFont(QFont("DejaVu Sans", 10, QFont.Bold))
+        self.btn_kill_lag.setCursor(QCursor(Qt.PointingHandCursor))
+        self.btn_kill_lag.setStyleSheet("""
+            QPushButton { background-color: #dc2626; color: white; border-radius: 6px; padding: 9px 16px; border: none; font-weight: bold; }
+            QPushButton:hover { background-color: #b91c1c; }
+        """)
+        self.btn_kill_lag.clicked.connect(self.kill_lag_processes)
+
+        b_kill_l.addWidget(lbl_kill_title)
+        b_kill_l.addWidget(self.lbl_kill_lag_status)
+        b_kill_l.addWidget(lbl_kill_advice)
+        b_kill_l.addWidget(self.btn_kill_lag)
+        cards_opt_grid.addWidget(box_kill_lag, 1, 1)
+
+        opt_hub_layout.addLayout(cards_opt_grid)
         c_layout.addWidget(opt_hub_frame)
 
         # 4 Thẻ Sức Khỏe Chi Tiết
@@ -1614,6 +1653,142 @@ class LinuxTaskManager(QMainWindow):
                 QMessageBox.warning(self, "Thông báo", f"Lỗi tối ưu: {out}")
         except Exception as e:
             QMessageBox.critical(self, "Lỗi", f"Lỗi: {str(e)}")
+
+    def kill_lag_processes(self):
+        """Quét & kill các tiến trình ngốn CPU/RAM gây lag hệ thống"""
+        try:
+            # Danh sách tiến trình KHÔNG ĐƯỢC KILL (hệ thống, desktop, task manager)
+            PROTECTED = {
+                "systemd", "Xorg", "cinnamon", "muffin", "lightdm", "dbus-daemon",
+                "polkitd", "NetworkManager", "wpa_supplicant", "systemd-journald",
+                "systemd-udevd", "systemd-logind", "systemd-resolved", "accounts-daemon",
+                "pipewire", "pipewire-pulse", "wireplumber", "pulseaudio",
+                "ibus-daemon", "ibus-extension", "ibus-ui-gtk3",
+                "cron", "rsyslogd", "avahi-daemon", "ssh-agent", "gpg-agent",
+                "login", "bash", "sh", "sudo", "containerd",
+                "task_manager", "task_manager_gui",  # chính app này
+            }
+
+            # Danh sách dịch vụ nền nặng nên kill/stop (không phải app đang dùng)
+            HEAVY_SERVICES_KILL = {"headroom", "waydroid"}
+            DOCKER_DEMO_CONTAINERS = ["demo-17-db", "demo-19-db", "demo-17-pg-ui", "demo-19-pg-ui"]
+
+            killed = []
+            skipped_protected = []
+            errors = []
+            ram_before = psutil.virtual_memory().available / (1024**3)
+
+            my_pid = os.getpid()
+            current_user = os.environ.get("USER", "tanma")
+
+            # 1. Stop Headroom service nếu đang chạy
+            try:
+                res = subprocess.run(
+                    ["systemctl", "--user", "is-active", "headroom.service"],
+                    capture_output=True, text=True, timeout=5
+                )
+                if res.stdout.strip() == "active":
+                    subprocess.run(["systemctl", "--user", "stop", "headroom.service"],
+                                   capture_output=True, text=True, timeout=5)
+                    killed.append("Headroom AI Proxy (service stopped)")
+            except Exception:
+                pass
+
+            # 2. Stop Docker demo containers
+            for cname in DOCKER_DEMO_CONTAINERS:
+                try:
+                    res = subprocess.run(
+                        ["docker", "inspect", "-f", "{{.State.Running}}", cname],
+                        capture_output=True, text=True, timeout=5
+                    )
+                    if "true" in res.stdout.lower():
+                        subprocess.run(["docker", "stop", cname],
+                                       capture_output=True, text=True, timeout=10)
+                        killed.append(f"Docker: {cname}")
+                except Exception:
+                    pass
+
+            # 3. Quét tiến trình user ngốn CPU > 15% hoặc RAM > 500MB
+            # Warm up CPU percent (lần đầu luôn trả 0.0)
+            for p in psutil.process_iter(['cpu_percent']):
+                pass
+            time.sleep(0.5)
+            for proc in psutil.process_iter(['pid', 'name', 'username', 'cpu_percent', 'memory_info']):
+                try:
+                    info = proc.info
+                    pid = info['pid']
+                    name = (info['name'] or "").lower()
+                    user = info['username'] or ""
+
+                    # Bỏ qua chính mình và process hệ thống
+                    if pid == my_pid or pid <= 10:
+                        continue
+                    if user == "root" and name not in HEAVY_SERVICES_KILL:
+                        continue
+                    if name in PROTECTED:
+                        continue
+                    # Bảo vệ claude-desktop (app đang chạy) — chỉ kill renderer thừa
+                    if "claude" in name and "renderer" not in (proc.cmdline() or [""]):
+                        continue
+
+                    cpu = info.get('cpu_percent', 0) or 0
+                    rss_mb = (info.get('memory_info') and info['memory_info'].rss or 0) / (1024**2)
+
+                    is_heavy = cpu > 15 or rss_mb > 500
+                    is_heavy_service = name in HEAVY_SERVICES_KILL
+
+                    if not (is_heavy or is_heavy_service):
+                        continue
+
+                    # Chrome renderer — kill tab ngốn, giữ main process
+                    if "chrome" in name:
+                        cmdline = " ".join(proc.cmdline() or [])
+                        if "--type=renderer" not in cmdline:
+                            continue  # giữ chrome main, gpu, broker
+                        if rss_mb < 300 and cpu < 15:
+                            continue  # tab nhẹ, giữ lại
+
+                    # Kill process
+                    proc.kill()
+                    label = f"{info['name']} (PID {pid}) — CPU: {cpu:.0f}%, RAM: {rss_mb:.0f}MB"
+                    killed.append(label)
+
+                except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                    pass
+                except Exception as ex:
+                    errors.append(str(ex))
+
+            # 4. Dọn RAM cache sau khi kill
+            self._run_aiac_tool("ram")
+            time.sleep(1)
+
+            ram_after = psutil.virtual_memory().available / (1024**3)
+            ram_freed = max(ram_after - ram_before, 0)
+            load_avg = os.getloadavg()
+
+            # Hiển thị kết quả
+            if killed:
+                kill_list = "\n".join(f"  • {k}" for k in killed[:15])
+                extra = f"\n  ... và {len(killed)-15} tiến trình khác" if len(killed) > 15 else ""
+                QMessageBox.information(
+                    self, "🔪 Kill Lag Thành Công",
+                    f"🔪 <b>ĐÃ DIỆT {len(killed)} TIẾN TRÌNH GÂY LAG!</b>\n\n"
+                    f"<b>Đã kill:</b>\n{kill_list}{extra}\n\n"
+                    f"• <b>RAM giải phóng:</b> ~{ram_freed:.2f} GB\n"
+                    f"• <b>RAM khả dụng:</b> {ram_after:.2f} GB\n"
+                    f"• <b>Load Average:</b> {load_avg[0]:.2f} (trước đó cao hơn)\n\n"
+                    "Máy đã nhẹ hơn rồi! 🚀"
+                )
+            else:
+                QMessageBox.information(
+                    self, "Kill Lag",
+                    "✅ <b>Không phát hiện tiến trình nào gây lag!</b>\n\n"
+                    f"• Load Average: {load_avg[0]:.2f}\n"
+                    f"• RAM khả dụng: {ram_after:.2f} GB\n\n"
+                    "Hệ thống đang hoạt động ổn định."
+                )
+        except Exception as e:
+            QMessageBox.critical(self, "Lỗi Kill Lag", f"Lỗi: {str(e)}")
 
     # ----------------------------------------------------
     # TAB 4: STARTUP APPS
